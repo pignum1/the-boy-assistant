@@ -183,24 +183,152 @@ docker compose up -d            # PostgreSQL + Redis + Backend
 
 ```
 the-boy-assistant/
+├── README.md
+├── .env.example
+├── .gitignore
+│
 ├── backend/
-│   ├── app/
-│   │   ├── api/v1/           # REST + WebSocket 端点
-│   │   ├── services/         # 领域服务 (DDD 限界上下文)
-│   │   │   └── collaboration/ # 编排层 (三引擎 + M0-M8)
-│   │   ├── models/           # ORM 数据模型
-│   │   ├── core/             # 配置·数据库·安全
-│   │   └── adapters/llm/     # LLM 适配层
 │   ├── Dockerfile
-│   └── docker-compose.yml
+│   ├── docker-compose.yml
+│   ├── requirements.txt
+│   ├── alembic.ini
+│   ├── CLAUDE.md                       # 开发规范 + DDD 领域划分
+│   │
+│   ├── app/
+│   │   ├── main.py                     # FastAPI 入口
+│   │   │
+│   │   ├── core/                       # 基础设施域
+│   │   │   ├── config.py               # pydantic-settings 配置
+│   │   │   ├── database.py             # async SQLAlchemy 引擎
+│   │   │   ├── security.py             # Fernet 加密
+│   │   │   ├── auth.py                 # API Key 中间件 + WS 认证
+│   │   │   └── rate_limit.py           # 滑动窗口限流
+│   │   │
+│   │   ├── adapters/llm/               # LLM 适配层
+│   │   │   ├── base.py                 # LLMConfig / LLMResponse
+│   │   │   ├── litellm_adapter.py      # LiteLLM 统一适配 (20+ Provider)
+│   │   │   ├── mock_adapter.py         # 测试 Mock
+│   │   │   └── rate_limiter.py         # Provider 级限流
+│   │   │
+│   │   ├── models/                     # 数据模型层 (纯 ORM)
+│   │   │   ├── agent.py, persona.py, model.py, tool.py
+│   │   │   ├── team.py, team_member.py, team_mode_configs.py
+│   │   │   ├── session.py, session_task.py
+│   │   │   ├── workflow.py, workflow_instance.py, workflow_template.py
+│   │   │   ├── memory.py, skill.py, sop.py
+│   │   │   ├── task.py, user_task.py
+│   │   │   └── knowledge_base.py, knowledge_chunk.py, mcp_server.py
+│   │   │
+│   │   ├── schemas/                    # Pydantic 数据传输对象
+│   │   │   └── agent, team, session, workflow, memory, skill 等 (16)
+│   │   │
+│   │   ├── api/v1/                     # 接口层 (薄层)
+│   │   │   ├── ws.py                   # WebSocket 三模式入口
+│   │   │   ├── sessions.py             # Session + 消息历史
+│   │   │   ├── teams.py                # Team + 模式 + 成员
+│   │   │   ├── workflows.py            # Workflow CRUD
+│   │   │   └── agents, personas, models, tools, skills, memories 等 (20)
+│   │   │
+│   │   ├── services/                   # 领域服务层 (核心)
+│   │   │   ├── harness.py              # 🛡️ Harness 横切拦截器 (473行)
+│   │   │   ├── loop_engine.py          # 🔄 Loop Engine 错误恢复 (253行)
+│   │   │   ├── safety_filter.py        # 🔒 安全过滤 (71行)
+│   │   │   ├── agent_chat.py           # 单 Agent 调用
+│   │   │   ├── agent_chat_stream.py    # 流式 Agent 调用
+│   │   │   ├── agent_factory.py        # Agent 工厂
+│   │   │   ├── agent_pool.py           # Agent 资源池
+│   │   │   ├── context_manager.py      # 上下文窗口管理
+│   │   │   ├── memory_manager.py       # 四层记忆管理
+│   │   │   ├── fallback_chain.py       # 模型降级链
+│   │   │   ├── model_router.py         # 模型智能路由
+│   │   │   ├── prompt_builder.py       # Prompt 组装
+│   │   │   │
+│   │   │   ├── collaboration/          # ⚡ 编排域 (核心域)
+│   │   │   │   ├── router.py           # 模式分发 (Mode → Engine)
+│   │   │   │   ├── graph.py            # M0-M8 LangGraph 状态图
+│   │   │   │   ├── streaming.py        # LangGraph → WebSocket 翻译
+│   │   │   │   ├── types.py            # CollabState TypedDict
+│   │   │   │   ├── hitl_detector.py    # HITL 三级检测
+│   │   │   │   ├── org_hierarchy.py    # 🌳 组织层级 (475行)
+│   │   │   │   ├── engines/            # 三引擎
+│   │   │   │   │   ├── swarm_engine.py     # 💬 群聊 (864行)
+│   │   │   │   │   ├── supervisor_engine.py # 👑 主管
+│   │   │   │   │   └── langgraph_engine.py  # 🔀 工作流 (1281行)
+│   │   │   │   ├── m0..m8_*.py         # M0-M8 节点 (17个)
+│   │   │   │   └── __tests__/          # 编排域测试 (9个)
+│   │   │   │
+│   │   │   ├── observer/               # 观察者模式
+│   │   │   │   ├── events.py           # 15 EventType
+│   │   │   │   ├── bus.py              # 异步 EventBus
+│   │   │   │   ├── persister.py        # DB 持久化
+│   │   │   │   └── token_tracker.py    # Token 追踪
+│   │   │   │
+│   │   │   ├── rag/                    # 知识域
+│   │   │   │   ├── knowledge_service.py
+│   │   │   │   ├── chunker.py, embedder.py
+│   │   │   │   ├── hybrid_search.py
+│   │   │   │   └── reranker.py
+│   │   │   │
+│   │   │   ├── workspace/              # 工作空间
+│   │   │   │   ├── manager.py          # 生命周期 + 隔离
+│   │   │   │   ├── snapshot.py         # 快照管理
+│   │   │   │   └── file_proxy.py       # 文件代理
+│   │   │   │
+│   │   │   ├── session_service.py      # Session 管理
+│   │   │   ├── team_manager.py         # Team 管理
+│   │   │   ├── team_mode_service.py    # 三模式配置
+│   │   │   ├── blackboard.py           # Redis Pub/Sub 黑板
+│   │   │   └── sop_*, workflow_*       # SOP/Workflow 引擎
+│   │   │
+│   │   └── tools/                      # 工具执行引擎
+│   │       ├── base.py                 # 工具基类
+│   │       ├── file_ops.py             # 文件操作
+│   │       ├── terminal.py             # 终端执行
+│   │       └── tool_executor.py        # 工具调度
+│   │
+│   ├── migrations/                     # Alembic 迁移 (22个版本)
+│   ├── skills/                         # AI Skills (13个)
+│   ├── scripts/                        # 运维脚本
+│   └── demos/                          # 演示脚本
+│
 ├── frontend/
-│   └── src/features/chatroom/ # 聊天室 (统一入口)
-│       ├── components/       # 消息卡片·抽屉·输入
-│       ├── store/            # Reducer + Actions
-│       └── hooks/            # WS连接·历史·状态
+│   ├── index.html
+│   ├── vite.config.ts
+│   ├── package.json, tsconfig*.json
+│   │
+│   └── src/
+│       ├── App.tsx, main.tsx
+│       ├── shared/                     # API 客户端 + 类型 + 工具
+│       ├── components/                 # Layout, Sidebar, Loading
+│       ├── contexts/                   # ThemeContext
+│       │
+│       └── features/
+│           ├── chatroom/               # 💬 聊天室 (核心)
+│           │   ├── ChatRoomView.tsx     # 主容器 (useReducer)
+│           │   ├── ChatRoomIndex.tsx    # 模式入口
+│           │   ├── store/              # chatRoomReducer + Actions
+│           │   ├── hooks/              # useWsEvents, useChatRoomState
+│           │   ├── types/              # ChatRoomState, TimelineItem
+│           │   ├── components/
+│           │   │   ├── chat/           # ChatStream, HITLCard, AgentMessageCard...
+│           │   │   ├── drawers/        # DrawerHost, WorkPlan, Artifacts...
+│           │   │   ├── header/         # PhaseProgressBar, DrawerToggleButtons
+│           │   │   ├── input/          # ChatInput, InputModeBanner
+│           │   │   └── shared/         # HITLOptions, AgentAvatar, ErrorBoundary
+│           │   └── views/              # Legacy 视图 (SwarmView, SupervisorView)
+│           │
+│           ├── resources/              # Agent, Persona, Skill, MCP, Model 管理
+│           ├── teams/                  # 团队管理
+│           ├── sop-designer/           # SOP 设计器
+│           ├── sop-runner/             # SOP 运行器
+│           ├── workflows/              # Workflow 列表
+│           ├── workflow-detail/        # Workflow 详情
+│           └── tasks/                  # 任务中心
+│
 └── docs/
-    ├── system-architecture-v5.md  # 完整架构文档 (13章)
-    └── 架构图-v5-wip/             # 6 张交互式架构图 (HTML)
+    ├── system-architecture-v5.md       # 完整架构文档 (13章)
+    ├── images/                         # 6张架构图 PNG
+    └── 架构图-v5-wip/                  # 架构图 HTML 源文件
 ```
 
 ---
