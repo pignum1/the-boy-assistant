@@ -71,12 +71,23 @@ The Boy Assistant 是一个**三模式企业级多 Agent 协作平台**，提供
 
 | 编号 | 图 | 说明 |
 |------|-----|------|
-| 01 | [DDD 领域全景](docs/images/01-DDD领域全景.png) | 5 限界上下文 + Harness 横切 · 领域依赖关系 |
-| 02 | [五层技术架构](docs/images/02-五层技术架构.png) | 交互→通信→编排→能力→数据 · 层间通信协议 |
-| 03 | [Supervisor 决策流程](docs/images/03-Supervisor决策流程.png) | M0-M7 流水线 · 审核-打回-升级 · M7 drift 回路 |
-| 04 | [Agent 生命周期 + Harness](docs/images/04-Agent生命周期与Harness.png) | 6 阶段管道 · Harness 4 钩子 · 三引擎差异 |
-| 05 | [Loop Engine + 异常处理](docs/images/05-LoopEngine与异常处理.png) | 三分类策略 · 四步恢复 · drift 纠正链路 |
-| 06 | [通信与数据流](docs/images/06-通信与数据流.png) | WS 消息分类 · Observer 事件 · 状态管理 · 持久化 |
+### 01 · DDD 领域全景
+<img src="docs/images/01-DDD领域全景.png" width="100%" />
+
+### 02 · 五层技术架构
+<img src="docs/images/02-五层技术架构.png" width="100%" />
+
+### 03 · Supervisor 决策流程
+<img src="docs/images/03-Supervisor决策流程.png" width="100%" />
+
+### 04 · Agent 生命周期 + Harness
+<img src="docs/images/04-Agent生命周期与Harness.png" width="100%" />
+
+### 05 · Loop Engine + 异常处理
+<img src="docs/images/05-LoopEngine与异常处理.png" width="100%" />
+
+### 06 · 通信与数据流
+<img src="docs/images/06-通信与数据流.png" width="100%" />
 
 ---
 
