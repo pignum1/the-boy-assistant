@@ -1,0 +1,33 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.db
+
+# Docker
+docker-compose.override.yml
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright MCP
+.playwright-mcp/
+backend/skills/git-demo-skill/

@@ -1,0 +1,15 @@
+graph TB
+    User([👤 用户])
+    System[<b>本系统</b><br/><small>系统描述</small>]
+
+    Ext1[<b>外部系统A</b><br/><small>第三方支付</small>]
+    Ext2[<b>外部系统B</b><br/><small>消息推送</small>]
+
+    User -->|HTTPS| System
+    System -->|REST API| Ext1
+    System -->|SDK| Ext2
+
+    style User fill:#083B77,color:#fff
+    style System fill:#1168BD,color:#fff
+    style Ext1 fill:#999,color:#fff
+    style Ext2 fill:#999,color:#fff

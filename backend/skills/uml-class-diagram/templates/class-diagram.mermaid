@@ -1,0 +1,55 @@
+classDiagram
+    class User {
+        +UUID id
+        +String email
+        +String password_hash
+        +String display_name
+        +DateTime created_at
+        +DateTime updated_at
+        +verify_password(password) bool
+        +to_dict() dict
+    }
+
+    class Order {
+        +UUID id
+        +UUID user_id
+        +Decimal total_amount
+        +String status
+        +DateTime created_at
+        +add_item(product, qty) OrderItem
+        +calculate_total() Decimal
+        +cancel() void
+    }
+
+    class OrderItem {
+        +UUID id
+        +UUID order_id
+        +UUID product_id
+        +Int quantity
+        +Decimal unit_price
+    }
+
+    class Product {
+        +UUID id
+        +String name
+        +Decimal price
+        +Int stock
+        +Bool is_active
+        +reduce_stock(qty) void
+        +restore_stock(qty) void
+    }
+
+    class Payment {
+        +UUID id
+        +UUID order_id
+        +Decimal amount
+        +String method
+        +String status
+        +process() PaymentResult
+        +refund() void
+    }
+
+    User "1" --> "*" Order : places
+    Order "1" --> "*" OrderItem : contains
+    OrderItem "*" --> "1" Product : references
+    Order "1" --> "1" Payment : has

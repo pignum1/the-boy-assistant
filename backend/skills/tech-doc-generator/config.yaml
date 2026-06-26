@@ -1,0 +1,6 @@
+trigger:
+  keywords: ["技术文档", "ADR", "技术方案", "设计文档", "README", "架构决策"]
+parameters:
+  - name: doc_type
+    description: 文档类型 (adr/proposal/api-design/db-design/readme)
+    required: true

@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["用户故事地图", "story map", "用户旅程", "功能地图", "MVP范围"]
+parameters:
+  - name: format
+    description: 输出格式 (markdown/mermaid)
+    required: false
+    default: markdown

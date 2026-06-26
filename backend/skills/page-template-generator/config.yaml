@@ -1,0 +1,6 @@
+trigger:
+  keywords: ["页面模板", "CRUD页面", "列表页", "详情页", "Dashboard模板"]
+parameters:
+  - name: page_type
+    description: 页面类型 (crud/detail/dashboard/settings)
+    required: true

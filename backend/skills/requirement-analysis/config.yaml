@@ -1,0 +1,6 @@
+trigger:
+  keywords: ["需求分析", "需求理解", "需求文档", "产品分析", "PRD", "功能设计"]
+parameters:
+  - name: tech_stack
+    description: 用户指定的技术栈
+    required: false

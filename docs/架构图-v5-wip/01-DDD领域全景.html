@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图1: DDD 领域全景 — The Boy Assistant v5</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', Roboto, sans-serif;
+    background: #0f0f1a; color: #e0e0e0; padding: 24px;
+}
+.container { max-width: 1300px; margin: 0 auto; }
+h1 { text-align: center; font-size: 24px; margin-bottom: 4px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.subtitle { text-align: center; color: #888; margin-bottom: 28px; font-size: 13px; }
+
+/* ===== 架构容器 ===== */
+.arch-container { display: flex; border-radius: 14px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35); margin-bottom: 28px;
+    min-height: 500px; }
+
+/* ===== 左侧色标栏 ===== */
+.layers-bar { width: 88px; display: flex; flex-direction: column; flex-shrink: 0; }
+.layers-bar .layer-label { flex: 1; display: flex; align-items: center; justify-content: center;
+    writing-mode: vertical-lr; text-orientation: mixed;
+    font-size: 12px; font-weight: 600; letter-spacing: 2px; white-space: nowrap;
+    padding: 8px 0; border-right: 1px solid rgba(255,255,255,0.06); }
+.layer-label.identity  { background: #152530; color: #4fc3f7; }
+.layer-label.agent     { background: #152515; color: #81c784; }
+.layer-label.knowledge { background: #252015; color: #ffb74d; }
+.layer-label.workflow  { background: #251515; color: #ef5350; }
+.layer-label.harness   { background: #2d1b3d; color: #ce93d8; }
+.layer-label.infra     { background: #1a1a2e; color: #90a4ae; }
+
+/* ===== 右侧卡片区 ===== */
+.main-content { flex: 1; display: flex; flex-direction: column; }
+.arch-row { flex: 1; display: flex; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.arch-row:last-child { border-bottom: none; }
+
+.module-card { flex: 1; padding: 11px 13px; border-right: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer; transition: all 0.2s; min-height: 70px;
+    display: flex; flex-direction: column; justify-content: center; }
+.module-card:last-child { border-right: none; }
+.module-card:hover { background: rgba(255,255,255,0.04); transform: translateY(-1px); }
+.module-card .icon { font-size: 17px; margin-bottom: 3px; }
+.module-card .name { font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
+.module-card .desc { font-size: 10px; color: #999; line-height: 1.35; }
+
+.row-identity  { background: #152530; }
+.row-agent     { background: #152515; }
+.row-knowledge { background: #252015; }
+.row-workflow  { background: #251515; }
+.row-infra     { background: #1a1a2e; }
+.row-harness   { background: #2d1b3d; }
+
+/* ===== 详情面板 ===== */
+.detail-panel { display: none; background: #1e1e2e; border-radius: 12px; padding: 22px;
+    margin-bottom: 28px; border: 1px solid #333; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
+.detail-panel.active { display: block; }
+.detail-panel .close { float: right; cursor: pointer; color: #888; font-size: 18px; background: none; border: none; }
+.detail-panel .close:hover { color: #fff; }
+.detail-panel h3 { font-size: 17px; margin-bottom: 6px; }
+.detail-tags { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+.tag { padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 600; }
+.tag.p0 { background: #ff475720; color: #ff4757; border: 1px solid #ff475740; }
+.tag.p1 { background: #ffa50220; color: #ffa502; border: 1px solid #ffa50240; }
+.tag.domain { background: rgba(102,126,234,0.15); color: #667eea; border: 1px solid rgba(102,126,234,0.25); }
+.detail-content { margin-top: 12px; font-size: 13px; color: #ccc; line-height: 1.75; }
+.detail-content b { color: #e0e0e0; }
+
+/* ===== 领域关系图 ===== */
+.deps-container { background: #1a1a2e; border-radius: 12px; padding: 22px;
+    margin-bottom: 28px; border: 1px solid rgba(255,255,255,0.05); }
+.deps-container h3 { font-size: 15px; color: #ccc; margin-bottom: 16px; }
+.deps-flow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.dep-box { padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.1); }
+.dep-box.identity  { background: #152530; color: #4fc3f7; }
+.dep-box.agent     { background: #152515; color: #81c784; }
+.dep-box.knowledge { background: #252015; color: #ffb74d; }
+.dep-box.workflow  { background: #251515; color: #ef5350; }
+.dep-box.infra     { background: #1a1a2e; color: #90a4ae; border-style: dashed; }
+.dep-arrow { color: #555; font-size: 16px; }
+
+.rules { display: flex; gap: 20px; margin-top: 18px; justify-content: center; flex-wrap: wrap; }
+.rule { font-size: 11px; padding: 6px 14px; border-radius: 20px; }
+.rule.allow { background: rgba(129,199,132,0.08); color: #81c784; border: 1px solid rgba(129,199,132,0.2); }
+.rule.deny  { background: rgba(239,83,80,0.08); color: #ef5350; border: 1px solid rgba(239,83,80,0.2); }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📐 The Boy Assistant v5.0 — DDD 领域全景</h1>
+    <p class="subtitle">五个限界上下文 + 横切保障层 · 点击模块查看详情</p>
+
+    <!-- ===== 主架构图 ===== -->
+    <div class="arch-container">
+        <div class="layers-bar">
+            <div class="layer-label workflow">⚡ 编排域 (核心)</div>
+            <div class="layer-label agent">🤖 智能域</div>
+            <div class="layer-label identity">🔑 身份域</div>
+            <div class="layer-label knowledge">📖 知识域</div>
+            <div class="layer-label infra">🔩 基础设施域</div>
+            <div class="layer-label harness">🛡️ Harness 保障</div>
+        </div>
+
+        <div class="main-content">
+            <!-- 编排域 (核心域) -->
+            <div class="arch-row row-workflow">
+                <div class="module-card" onclick="showDetail('team')">
+                    <div class="icon">👥</div><div class="name">Team</div><div class="desc">团队+模式配置+角色插槽</div></div>
+                <div class="module-card" onclick="showDetail('session')">
+                    <div class="icon">💬</div><div class="name">Session</div><div class="desc">会话生命周期·消息历史</div></div>
+                <div class="module-card" onclick="showDetail('swarm')">
+                    <div class="icon">💬</div><div class="name">Swarm Engine</div><div class="desc">三阶段群聊·HITL检测</div></div>
+                <div class="module-card" onclick="showDetail('supervisor')">
+                    <div class="icon">👑</div><div class="name">Supervisor Engine</div><div class="desc">M0-M7管道·层级委派</div></div>
+                <div class="module-card" onclick="showDetail('langgraph')">
+                    <div class="icon">🔀</div><div class="name">LangGraph Engine</div><div class="desc">拓扑排序·7节点类型</div></div>
+                <div class="module-card" onclick="showDetail('hitl-sys')">
+                    <div class="icon">🎯</div><div class="name">HITL System</div><div class="desc">三级检测·4种提取·状态机</div></div>
+                <div class="module-card" onclick="showDetail('org-hierarchy')">
+                    <div class="icon">🌳</div><div class="name">Org Hierarchy</div><div class="desc">委派树·LCA审核·升级链</div></div>
+                <div class="module-card" onclick="showDetail('m5m8')">
+                    <div class="icon">📬</div><div class="name">M5/M8 通信</div><div class="desc">上下文组装·对等消息</div></div>
+            </div>
+
+            <!-- 智能域 -->
+            <div class="arch-row row-agent">
+                <div class="module-card" onclick="showDetail('agent-f')">
+                    <div class="icon">🏭</div><div class="name">Agent Factory</div><div class="desc">组装 Model+Persona+Tools</div></div>
+                <div class="module-card" onclick="showDetail('memory')">
+                    <div class="icon">💾</div><div class="name">Memory L1-L4</div><div class="desc">四层记忆·Token裁剪·继承</div></div>
+                <div class="module-card" onclick="showDetail('context')">
+                    <div class="icon">📚</div><div class="name">Context Manager</div><div class="desc">上下文组装·窗口管理</div></div>
+                <div class="module-card" onclick="showDetail('skill')">
+                    <div class="icon">📁</div><div class="name">Skill Registry</div><div class="desc">自包含技能·SKILL.md</div></div>
+                <div class="module-card" onclick="showDetail('fallback')">
+                    <div class="icon">⛓️</div><div class="name">Fallback Chain</div><div class="desc">模型降级·重试·升级</div></div>
+            </div>
+
+            <!-- 身份域 -->
+            <div class="arch-row row-identity">
+                <div class="module-card" onclick="showDetail('persona')">
+                    <div class="icon">👤</div><div class="name">Persona</div><div class="desc">角色定义·System Prompt·能力</div></div>
+                <div class="module-card" onclick="showDetail('model')">
+                    <div class="icon">🧠</div><div class="name">Model Router</div><div class="desc">模型注册·智能路由</div></div>
+                <div class="module-card" onclick="showDetail('tool')">
+                    <div class="icon">🔧</div><div class="name">Tool Registry</div><div class="desc">MCP注册·Schema·权限</div></div>
+            </div>
+
+            <!-- 知识域 -->
+            <div class="arch-row row-knowledge">
+                <div class="module-card" onclick="showDetail('kb')">
+                    <div class="icon">📋</div><div class="name">KnowledgeBase</div><div class="desc">知识库CRUD·层级</div></div>
+                <div class="module-card" onclick="showDetail('rag')">
+                    <div class="icon">🔍</div><div class="name">RAG Engine</div><div class="desc">混合检索·Dense+Sparse</div></div>
+                <div class="module-card" onclick="showDetail('embed')">
+                    <div class="icon">🧬</div><div class="name">Embedder</div><div class="desc">文档分块·向量化</div></div>
+                <div class="module-card" onclick="showDetail('rerank')">
+                    <div class="icon">🎯</div><div class="name">Reranker</div><div class="desc">Cross-Encoder精排</div></div>
+            </div>
+
+            <!-- 基础设施域 -->
+            <div class="arch-row row-infra">
+                <div class="module-card" onclick="showDetail('model-adp')">
+                    <div class="icon">🤖</div><div class="name">Model Adapter</div><div class="desc">LiteLLM·20+Provider·超时</div></div>
+                <div class="module-card" onclick="showDetail('workspace')">
+                    <div class="icon">📂</div><div class="name">Workspace Mgr</div><div class="desc">按Session隔离·Snapshot</div></div>
+                <div class="module-card" onclick="showDetail('observer')">
+                    <div class="icon">👁️</div><div class="name">Observer</div><div class="desc">EventBus·15种Event·持久化</div></div>
+                <div class="module-card" onclick="showDetail('security')">
+                    <div class="icon">🔒</div><div class="name">Security</div><div class="desc">Fernet加密·API Key</div></div>
+                <div class="module-card" onclick="showDetail('db')">
+                    <div class="icon">🗄️</div><div class="name">PostgreSQL 16</div><div class="desc">asyncpg·JSONB·UUID</div></div>
+                <div class="module-card" onclick="showDetail('redis')">
+                    <div class="icon">⚡</div><div class="name">Redis 7</div><div class="desc">缓存·Pub/Sub·限流</div></div>
+            </div>
+
+            <!-- Harness 横切保障层 -->
+            <div class="arch-row row-harness">
+                <div class="module-card" onclick="showDetail('harness')">
+                    <div class="icon">🛡️</div><div class="name">Harness 4 Hooks</div><div class="desc">before/after/verify/cleanup</div></div>
+                <div class="module-card" onclick="showDetail('loop')">
+                    <div class="icon">🔄</div><div class="name">Loop Engine</div><div class="desc">三分类错误·四步恢复·自愈</div></div>
+                <div class="module-card" onclick="showDetail('eventbus')">
+                    <div class="icon">📡</div><div class="name">EventBus</div><div class="desc">异步发布订阅·非阻塞</div></div>
+                <div class="module-card" onclick="showDetail('safety')">
+                    <div class="icon">🔮</div><div class="name">Safety Filter</div><div class="desc">注入检测·PII脱敏</div></div>
+                <div class="module-card" onclick="showDetail('rate-limiter')">
+                    <div class="icon">⏱️</div><div class="name">Rate Limiter</div><div class="desc">滑动窗口·120 RPM</div></div>
+                <div class="module-card" onclick="showDetail('audit')">
+                    <div class="icon">📝</div><div class="name">Audit Log</div><div class="desc">结构化审计·全链路追踪</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 领域依赖关系 ===== -->
+    <div class="deps-container">
+        <h3>🔗 领域间依赖关系</h3>
+        <div class="deps-flow">
+            <span class="dep-box identity">🔑 Identity</span>
+            <span class="dep-arrow">→</span>
+            <span class="dep-box agent">🤖 Agent</span>
+            <span class="dep-arrow">+</span>
+            <span class="dep-box knowledge">📖 Knowledge</span>
+            <span class="dep-arrow">→</span>
+            <span class="dep-box workflow">⚡ Workflow<br/><small>(编排层消费)</small></span>
+        </div>
+        <div style="text-align:center;margin:12px 0 6px;">
+            <span class="dep-box infra" style="display:inline-block;margin:0 6px;">🔩 Infrastructure</span>
+            <span style="color:#888;margin:0 6px;">← 被所有域依赖（无方向限制）</span>
+        </div>
+        <div class="rules">
+            <span class="rule allow">✅ 跨域只通过 UUID 引用</span>
+            <span class="rule allow">✅ API 层协调跨域操作</span>
+            <span class="rule allow">✅ 领域事件异步解耦</span>
+            <span class="rule deny">❌ 禁止跨域导入 ORM 模型</span>
+            <span class="rule deny">❌ 禁止循环依赖</span>
+        </div>
+    </div>
+
+    <!-- ===== 详情面板 ===== -->
+    <div class="detail-panel" id="detailPanel">
+        <button class="close" onclick="closeDetail()">✕</button>
+        <h3 id="detailTitle"></h3>
+        <div class="detail-tags" id="detailTags"></div>
+        <div class="detail-content" id="detailContent"></div>
+    </div>
+</div>
+
+<script>
+const data = {
+    // 编排域
+    team: { t:'👥 Team — 团队聚合根', tags:['P0','编排域'], c:'<b>职责</b>：多Agent协作的组织单元。<br><br>核心字段：name · collaboration_mode(swarm/supervisor/langgraph) · workflow_id · leader_id · max_parallel_agents<br><br><b>关联配置</b>：<br>• team_supervisor_configs — Leader身份<br>• team_supervisor_relations — 委派树(多层级)<br>• team_langgraph_configs — DAG绑定<br>• team_members — 角色→Agent绑定<br><br><b>服务</b>：team_manager.py' },
+    session: { t:'💬 Session — 会话聚合根', tags:['P0','编排域'], c:'<b>职责</b>：一次协作的生命周期管理。<br><br>核心字段：team_id · title · workspace_path · status<br><br><b>关联</b>：<br>• Session → Memory (L2 context 记忆)<br>• Session → Workspace (按 session_id 隔离)<br>• Session → Messages (历史消息流)<br><br><b>服务</b>：session_service.py' },
+    swarm: { t:'💬 Swarm Engine — 群聊引擎 (864行)', tags:['P0','编排域'], c:'<b>定位</b>：多Agent自由讨论，流程从讨论中<b>涌现</b>。<br><br><b>三阶段流水线</b>：<br>1. RoundTable 讨论 — 轮询Agent发言(最多3轮)<br>2. Agent Execution — 有产出任务的Agent调LLM+Harness<br>3. Completion / HITL — 完成或触发人工介入<br><br><b>HITL三级检测</b>：L1显式标记 → L2结构化选项 → L3六特征评分(≥3触发)<br><br><b>文件</b>：swarm_engine.py' },
+    supervisor: { t:'👑 Supervisor Engine — 主管引擎 (89行入口)', tags:['P0','编排域'], c:'<b>定位</b>：结构化多Agent协作，固定M0-M7管道。<br><br><b>实现</b>：基于LangGraph StateGraph<CollabState>，注册9个节点(M0-M7+HITL)和条件边。streaming.py驱动状态图执行。<br><br><b>组织层级</b>：DB读取team_supervisor_configs+relations → load_org_structure → m6_delegate层级委派<br><br><b>M7增强</b>：drift_detected→M1重分析(带验证反馈)' },
+    langgraph: { t:'🔀 LangGraph Engine — 工作流引擎 (1281行)', tags:['P0','编排域'], c:'<b>定位</b>：用户自定义DAG编排执行。<br><br><b>执行流程</b>：workflow → 拓扑排序(Kahn) → 分层(同层无依赖) → asyncio.gather并行<br><br><b>7种节点类型</b>：Start/Agent/Condition/Router/Validation/HITL/End<br><br><b>Agent通信</b>：artifacts字典 · PeerMailbox · workspace文件<br><b>Harness集成</b>：_execute_agent_node调用harness.before_execution().prompt' },
+    'hitl-sys': { t:'🎯 HITL System — 人机协作', tags:['P0','编排域'], c:'<b>Swarm</b>：三级检测(显式标记→结构选项→6特征评分≥3)<br><b>Supervisor</b>：M2/M3/M6/M7固定HITL节点<br><b>LangGraph</b>：HITL节点+Validation escalate<br><br><b>4种选项提取</b>：Markdown标题→Regex方案→编号列表→关键词<br><b>前端</b>：HITLOptions共享组件，5种模式，三引擎复用' },
+    'org-hierarchy': { t:'🌳 Org Hierarchy — 组织层级 (475行)', tags:['P1','编排域'], c:'<b>核心功能</b>：<br>• load_org_structure(team_id) — DB读取层级树<br>• build_delegation_tree() — 递归构建委派结构<br>• find_reviewer_for_level() — LCA算法找审核人<br>• find_escalation_target() — 沿组织树向上查找升级目标<br>• generate_role_context() — 生成角色上下文prompt<br>• format_org_tree_desc() — LLM可读的组织树描述' },
+    m5m8: { t:'📬 M5/M8 — 上下文组装 + 对等通信', tags:['P1','编排域'], c:'<b>M5 Context Pipeline</b>：从CollabState提取→WorkerContext→文本prompt。Harness._build_prompt调用。<br><br><b>M8 PeerMailbox</b>：Agent间对等消息(challenge/share/question/response)，三引擎均已接入。' },
+
+    // 智能域
+    'agent-f': { t:'🏭 Agent Factory — Agent组装', tags:['P0','智能域'], c:'<b>公式</b>：Agent = Model + Persona + Tools<br><br>Agent实例绑定默认Model(运行时可由编排层覆盖)，注入Persona的system_prompt+capabilities，注册声明的Tools。<br>跨团队复用：同一Agent可加入多个Team。<br><br><b>服务</b>：agent_factory.py' },
+    memory: { t:'💾 Memory L1-L4 — 四层记忆', tags:['P0','智能域'], c:'<b>L1 Context Window</b>：LLM原生，单次请求<br><b>L2 Session</b>：PostgreSQL，会话期间<br><b>L3 Team</b>：PostgreSQL，30天<br><b>L4 Project</b>：Redis，全局共享<br><br><b>Token裁剪</b>：预算1M/session，System>当前任务>前置产物>PeerMsg>记忆>历史<br><br><b>服务</b>：memory_manager.py' },
+    context: { t:'📚 Context Manager — 上下文管理', tags:['P0','智能域'], c:'<b>职责</b>：为Agent执行组装上下文窗口。<br><br>• Token预算计算与裁剪<br>• 压缩策略：摘要压缩(70%)+裁剪(90%)<br>• 双模式检索：RAG语义+AST代码符号<br><br><b>与Harness关系</b>：Harness._build_prompt调用M5 ContextPipeline构建完整prompt后，再调用ContextManager注入记忆+RAG。' },
+    skill: { t:'📁 Skill — 技能注册', tags:['P1','智能域'], c:'<b>结构</b>：SKILL.md(name+description+instructions+output_format) + config.yaml(trigger+参数)<br><br>Agent与Skill解耦：SOP节点中按需加载。<br><br><b>服务</b>：skill_registry.py + skill_executor.py' },
+    fallback: { t:'⛓️ Fallback Chain — 模型降级', tags:['P1','智能域'], c:'<b>降级顺序</b>：primary → secondary → mock<br><b>触发</b>：timeout / rate_limit / 503 / connection_error<br><b>超时</b>：DeepSeek 120s，其他60s<br><b>与Loop Engine协作</b>：TRANSIENT错误触发Fallback，FATAL跳过直接HITL<br><br><b>服务</b>：fallback_chain.py' },
+
+    // 身份域
+    persona: { t:'👤 Persona — 角色定义', tags:['P0','身份域'], c:'<b>聚合根</b>：定义"谁"。<br><br>核心属性：name · system_prompt · capabilities(能力维度) · tools_declared(含权限readonly) · 输出偏好(风格/语言/格式)<br><br><b>服务</b>：persona_service.py' },
+    model: { t:'🧠 Model Router — 模型路由', tags:['P0','身份域'], c:'<b>职责</b>：模型注册+智能路由。<br><br>• Model Router：简单→轻量模型，复杂→强模型<br>• 重试升级：失败时自动升级到更强模型<br>• 成本优化：按复杂度选择成本最优模型<br><br><b>服务</b>：model_router.py' },
+    tool: { t:'🔧 Tool Registry — 工具注册', tags:['P0','身份域'], c:'<b>职责</b>：工具注册与发现，支持MCP协议。<br><br>三层配置：Registry(注册)→Persona(声明)→Team(过滤)<br>运行时可用工具 = Persona声明 ∩ Team白名单<br><br><b>服务</b>：tool_registry.py' },
+
+    // 知识域
+    kb: { t:'📋 KnowledgeBase — 知识库', tags:['P1','知识域'], c:'<b>聚合根</b>：知识库CRUD。<br><br>知识库层级：Agent专属>团队公共>全局。<br><b>服务</b>：rag/knowledge_service.py' },
+    rag: { t:'🔍 RAG Engine — 混合检索', tags:['P0','知识域'], c:'<b>混合检索</b>：Dense(pgvector) + Sparse(BM25)<br><b>Reranker</b>：bge-reranker-v2-m3 Cross-Encoder精排<br><b>Chunking</b>：语义分块(512 token) + overlap(64)<br><b>检索优先级</b>：AST精确→RAG语义→未命中<br><b>服务</b>：rag/hybrid_search.py' },
+    embed: { t:'🧬 Embedder — 向量化', tags:['P1','知识域'], c:'<b>职责</b>：文档→向量。语义分块+embedding生成。<br><br><b>服务</b>：rag/chunker.py + rag/embedder.py' },
+    rerank: { t:'🎯 Reranker — 重排序', tags:['P2','知识域'], c:'<b>职责</b>：对检索结果Cross-Encoder精排，提升相关性。<br><br><b>服务</b>：rag/reranker.py' },
+
+    // 基础设施域
+    'model-adp': { t:'🤖 Model Adapter — LLM适配', tags:['P0','基础设施'], c:'<b>适配器模式</b>：OpenAI/Claude/Gemini/DeepSeek统一接口<br><b>Streaming</b>：SSE流式输出<br><b>Retry</b>：指数退避1s→2s→4s，最多3次<br><b>超时</b>：DeepSeek 120s，其余60s<br><br><b>文件</b>：adapters/llm/litellm_adapter.py' },
+    workspace: { t:'📂 Workspace Mgr — 工作空间', tags:['P1','基础设施'], c:'<b>隔离模型</b>：{WORKSPACE_BASE}/{session_id}/<br><br><b>生命周期</b>：创建→Agent写入→用户查看→归档/删除<br><b>文件提取</b>：正则解析```语言 路径→workspace写入<br><b>Snapshot</b>：关键节点快照，支持回滚<br><br><b>文件</b>：workspace/manager.py' },
+    observer: { t:'👁️ Observer — 事件系统', tags:['P1','基础设施'], c:'<b>EventBus</b>：异步发布/订阅，asyncio.create_task非阻塞<br><b>15种EventType</b>：覆盖Agent/Task/HITL/Verification/Error<br><b>持久化</b>：独立DB session保证事件不丢失<br><br><b>文件</b>：observer/events.py + bus.py + persister.py' },
+    security: { t:'🔒 Security — 加密与认证', tags:['P1','基础设施'], c:'<b>Fernet加密</b>：API Key加密存储<br><b>ApiKeyMiddleware</b>：验证请求中的API Key<br><b>verify_ws_auth</b>：WebSocket连接认证<br><br><b>文件</b>：core/security.py + core/auth.py' },
+    db: { t:'🗄️ PostgreSQL 16 — 主存储', tags:['P0','基础设施'], c:'<b>驱动</b>：asyncpg异步<br><b>数据类型</b>：JSONB(workflow config) · UUID主键 · TIMESTAMPTZ · ARRAY<br><b>全文检索</b>：pgvector向量检索<br><br><b>文件</b>：core/database.py' },
+    redis: { t:'⚡ Redis 7 — 缓存与消息', tags:['P1','基础设施'], c:'<b>用途</b>：<br>• 会话状态缓存<br>• Blackboard Pub/Sub(跨团队通信)<br>• 速率限制计数器<br>• 语义缓存' },
+
+    // Harness
+    harness: { t:'🛡️ Harness — 4钩子拦截器 (473行)', tags:['P0','Harness'], c:'<b>Agent执行生命周期统一入口</b>：<br><br>① <b>before_execution</b>：_build_prompt(M5+M8)→_inject_context(Memory+RAG)→_check_token_budget<br>② <b>after_execution</b>：_extract_files→_record_tokens→_persist_with_retry(2次)→_audit_log<br>③ <b>verify</b>：选非生产者Agent做盲审(只给需求+产物)<br>④ <b>cleanup</b>：清Token计数器+暂停状态+会话资源<br><br><b>设计要点</b>：HarnessConfig全功能开关，渐进式启用。三引擎通过不同的ExecutionContext字段适配。<br><br><b>文件</b>：services/harness.py' },
+    loop: { t:'🔄 Loop Engine — 错误恢复 (253行)', tags:['P0','Harness'], c:'<b>三分类错误策略</b>：<br>• TRANSIENT(timeout/429/503)→自动重试(指数退避1s→2s→4s)<br>• CONTENT(格式/空输出/验证失败)→四步恢复(rollback→feedback→inject→retry)<br>• FATAL(API key/权限/配置)→立即升级HITL<br><br><b>限制</b>：MAX_RETRIES=3，相同错误×2提前升级<br><br><b>文件</b>：services/loop_engine.py' },
+    eventbus: { t:'📡 EventBus — 事件总线', tags:['P1','Harness'], c:'<b>异步非阻塞</b>：asyncio.create_task发射，异常不传播到调用方<br><br><b>订阅模式</b>：subscribe(EventType, handler) + subscribe_all(全局)<br><b>事件类型</b>：AGENT_EXECUTION_STARTED/COMPLETED · TASK_CREATED/COMPLETED · HITL_REQUESTED/RESUMED · VERIFICATION_PASSED/FAILED · SESSION_STARTED/ENDED · FILES_CHANGED · ERROR_OCCURRED<br><br><b>文件</b>：observer/events.py + bus.py' },
+    safety: { t:'🔮 Safety Filter — 内容安全', tags:['P1','Harness'], c:'<b>Prompt Injection检测</b>：8种正则(ignore previous/system prompt/DAN越狱等)<br><b>PII脱敏</b>：手机号/身份证/API Key/密码/邮箱<br><b>过滤时机</b>：消息进入引擎前(ws.py中检测)<br><br><b>文件</b>：services/safety_filter.py' },
+    'rate-limiter': { t:'⏱️ Rate Limiter — 流量控制', tags:['P1','Harness'], c:'<b>算法</b>：滑动窗口<br><b>默认限制</b>：120 RPM(可配置)<br><b>粒度</b>：Per API Key<br><br><b>文件</b>：core/rate_limit.py' },
+    audit: { t:'📝 Audit Log — 审计追踪', tags:['P2','Harness'], c:'<b>结构化日志</b>：session/agent/node/model/latency/tokens<br><b>格式</b>：harness.audit | session=xxx agent=xxx node=xxx model=xxx latency=xxxms tokens=xxx<br><br>集成在Harness._audit_log中，每次Agent执行后自动记录。' },
+};
+
+function showDetail(key) {
+    const d = data[key]; if (!d) return;
+    const p = document.getElementById('detailPanel');
+    document.getElementById('detailTitle').textContent = d.t;
+    document.getElementById('detailTags').innerHTML = d.tags.map(t =>
+        '<span class="tag '+ (t==='P0'?'p0':t==='P1'?'p1':'domain') +'">'+t+'</span>').join('');
+    document.getElementById('detailContent').innerHTML = d.c;
+    p.classList.add('active');
+    p.scrollIntoView({ behavior: 'smooth' });
+}
+function closeDetail() { document.getElementById('detailPanel').classList.remove('active'); }
+</script>
+</body>
+</html>

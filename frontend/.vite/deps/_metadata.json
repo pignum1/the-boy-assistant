@@ -1,0 +1,80 @@
+{
+  "hash": "9d044edd",
+  "configHash": "0c48f11d",
+  "lockfileHash": "7ede137b",
+  "browserHash": "7a8be07e",
+  "optimized": {
+    "@xyflow/react": {
+      "src": "../../node_modules/@xyflow/react/dist/esm/index.js",
+      "file": "@xyflow_react.js",
+      "fileHash": "c87f8972",
+      "needsInterop": false
+    },
+    "dagre": {
+      "src": "../../node_modules/dagre/index.js",
+      "file": "dagre.js",
+      "fileHash": "cf3502b8",
+      "needsInterop": true
+    },
+    "js-yaml": {
+      "src": "../../node_modules/js-yaml/dist/js-yaml.mjs",
+      "file": "js-yaml.js",
+      "fileHash": "5b5144a8",
+      "needsInterop": false
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "cc161522",
+      "needsInterop": true
+    },
+    "react-markdown": {
+      "src": "../../node_modules/react-markdown/index.js",
+      "file": "react-markdown.js",
+      "fileHash": "f2858f55",
+      "needsInterop": false
+    },
+    "react-router-dom": {
+      "src": "../../node_modules/react-router-dom/dist/index.mjs",
+      "file": "react-router-dom.js",
+      "fileHash": "c1507c6e",
+      "needsInterop": false
+    },
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "82e59f6c",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "f4dfb3ad",
+      "needsInterop": true
+    },
+    "remark-gfm": {
+      "src": "../../node_modules/remark-gfm/index.js",
+      "file": "remark-gfm.js",
+      "fileHash": "0f62a0d9",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-B4lejLz5": {
+      "file": "chunk-B4lejLz5.js",
+      "isDynamicEntry": false
+    },
+    "jsx-runtime-DV5nv0qg": {
+      "file": "jsx-runtime-DV5nv0qg.js",
+      "isDynamicEntry": false
+    },
+    "lib-gUFrgDEu": {
+      "file": "lib-gUFrgDEu.js",
+      "isDynamicEntry": false
+    },
+    "react-dom-DcnZCTWX": {
+      "file": "react-dom-DcnZCTWX.js",
+      "isDynamicEntry": false
+    }
+  }
+}

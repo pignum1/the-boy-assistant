@@ -1,0 +1,27 @@
+graph TB
+    User([👤 用户])
+
+    subgraph 系统
+        WebApp[<b>Web 前端</b><br/><small>React SPA</small>]
+        API[<b>API 服务</b><br/><small>FastAPI</small>]
+        Worker[<b>异步 Worker</b><br/><small>Celery</small>]
+        DB[(<b>数据库</b><br/><small>PostgreSQL</small>)]
+        Cache[(<b>缓存</b><br/><small>Redis</small>)]
+        MQ[<b>消息队列</b><br/><small>RabbitMQ</small>]
+    end
+
+    User -->|HTTPS| WebApp
+    WebApp -->|REST API| API
+    API -->|SQL| DB
+    API -->|读写| Cache
+    API -->|发布任务| MQ
+    MQ -->|消费任务| Worker
+    Worker -->|SQL| DB
+
+    style User fill:#083B77,color:#fff
+    style WebApp fill:#4389DB,color:#fff
+    style API fill:#4389DB,color:#fff
+    style Worker fill:#4389DB,color:#fff
+    style DB fill:#7B3DB0,color:#fff
+    style Cache fill:#7B3DB0,color:#fff
+    style MQ fill:#E08D28,color:#fff

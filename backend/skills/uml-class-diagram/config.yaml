@@ -1,0 +1,6 @@
+trigger:
+  keywords: ["类图", "ER图", "数据模型", "UML", "实体关系", "领域模型", "DDD"]
+parameters:
+  - name: diagram_type
+    description: 图表类型 (class/er/ddd)
+    required: false

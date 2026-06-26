@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant C as Client
+    participant GW as API Gateway
+    participant Auth as Auth Service
+    participant API as API Service
+    participant DB as PostgreSQL
+    participant Cache as Redis
+
+    C->>GW: POST /api/v1/orders
+    GW->>Auth: Validate JWT
+    Auth-->>GW: 200 OK (user_id)
+    GW->>API: Forward request
+
+    API->>Cache: GET cache:user:{id}
+    Cache-->>API: MISS
+    API->>DB: SELECT * FROM users WHERE id = ?
+    DB-->>API: User row
+    API->>Cache: SET cache:user:{id} (TTL 300s)
+
+    API->>DB: BEGIN TRANSACTION
+    API->>DB: INSERT INTO orders (...)
+    API->>DB: UPDATE products SET stock = stock - 1
+    DB-->>API: COMMIT OK
+
+    API-->>GW: 201 Created {order_id}
+    GW-->>C: 201 Created
+
+    Note over API,Cache: 异步通知
+    API-)MQ: publish order.created

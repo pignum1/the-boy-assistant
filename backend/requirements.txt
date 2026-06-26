@@ -1,0 +1,39 @@
+# FastAPI
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+
+# Database
+sqlalchemy[asyncio]==2.0.41
+asyncpg==0.30.0
+alembic==1.16.1
+psycopg2-binary==2.9.10
+
+# Redis
+redis==6.2.0
+
+# LLM
+litellm==1.72.7
+
+# Config
+pydantic-settings==2.9.1
+python-dotenv==1.1.0
+
+# Security
+cryptography==45.0.4
+
+# CLI
+click==8.2.1
+
+# Async file I/O
+aiofiles==24.1.0
+
+# YAML parsing
+pyyaml==6.0.2
+
+# HTTP client
+httpx==0.28.1
+
+# Testing
+pytest==8.4.0
+pytest-asyncio==1.0.0
+httpx==0.28.1

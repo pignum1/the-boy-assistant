@@ -1,0 +1,64 @@
+classDiagram
+    direction LR
+
+    class OrderAggregate {
+        <<Aggregate Root>>
+        -OrderId id
+        -CustomerId customerId
+        -OrderStatus status
+        -List~OrderItem~ items
+        -Address shippingAddress
+        +addItem(product, qty) void
+        +removeItem(itemId) void
+        +confirm() void
+        +cancel(reason) void
+    }
+
+    class OrderItem {
+        <<Entity>>
+        -OrderItemId id
+        -ProductId productId
+        -int quantity
+        -Money price
+    }
+
+    class OrderId {
+        <<Value Object>>
+        -UUID value
+    }
+
+    class Money {
+        <<Value Object>>
+        -BigDecimal amount
+        -String currency
+        +add(other) Money
+        +multiply(factor) Money
+    }
+
+    class Address {
+        <<Value Object>>
+        -String street
+        -String city
+        -String zipCode
+        -String country
+    }
+
+    class OrderCreated {
+        <<Domain Event>>
+        -OrderId orderId
+        -Instant occurredAt
+    }
+
+    class OrderCancelled {
+        <<Domain Event>>
+        -OrderId orderId
+        -String reason
+        -Instant occurredAt
+    }
+
+    OrderAggregate *-- OrderItem
+    OrderAggregate *-- OrderId
+    OrderAggregate *-- Address
+    OrderItem *-- Money
+    OrderAggregate ..> OrderCreated : publishes
+    OrderAggregate ..> OrderCancelled : publishes

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Boy Assistant v5.0 — 系统架构全景图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+:root {
+  --bg: #0a0e17; --surface: #111827; --border: rgba(255,255,255,0.08);
+  --text: #e2e8f0; --muted: #8899aa;
+  --identity: #4fc3f7; --agent: #81c784; --knowledge: #ffb74d;
+  --workflow: #ef5350; --infra: #90a4ae; --harness: #ce93d8;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif; padding:24px; }
+.container { max-width:1400px; margin:0 auto; }
+h1 { text-align:center; font-size:24px; margin-bottom:4px;
+  background: linear-gradient(135deg, #667eea, #ce93d8);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.subtitle { text-align:center; color:var(--muted); margin-bottom:40px; font-size:13px; }
+
+.section {
+  background:var(--surface); border-radius:16px; padding:32px 28px;
+  border:1px solid var(--border); margin-bottom:48px;
+}
+.section h2 { font-size:17px; color:var(--muted); margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+.mermaid-wrap { display:flex; justify-content:center; overflow-x:auto; }
+
+.legend { display:flex; gap:20px; flex-wrap:wrap; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+.legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🏗️ The Boy Assistant v5.0 — 系统架构全景图</h1>
+<p class="subtitle">DDD 五限界上下文 + 五层技术架构 + Supervisor 核心流程 &nbsp;|&nbsp; Mermaid.js 渲染 &nbsp;|&nbsp; 深色主题</p>
+
+<!-- ==================== 图1: DDD 领域全景 ==================== -->
+<div class="section">
+<h2>📐 图1: 限界上下文映射 (Bounded Context Map)</h2>
+<div class="mermaid-wrap">
+<pre class="mermaid">
+graph TB
+    API["🔌 api/v1 - 参数校验+领域服务调用"]
+
+    subgraph I["🔑 Identity 身份域"]
+        direction TB
+        Persona["👤 Persona<br/>角色定义+SystemPrompt"]
+        ModelE["🧠 Model<br/>模型注册+智能路由"]
+        ToolE["🔧 Tool<br/>工具注册+MCP协议"]
+    end
+
+    subgraph A["🤖 Agent 智能域"]
+        direction TB
+        AgentR["🏭 Agent<br/>组装:Model+Persona+Tools"]
+        Memory["💾 Memory L1-L4<br/>上下文/会话/团队/项目"]
+        ContextM["📚 Context Pipeline<br/>M5上下文组装(Token裁剪)"]
+        Skill["📁 Skill<br/>自包含技能目录"]
+        Fallback["⛓️ Fallback Chain<br/>模型降级+重试"]
+    end
+
+    subgraph K["📖 Knowledge 知识域"]
+        direction TB
+        KB["📋 KnowledgeBase<br/>知识库CRUD"]
+        RAG["🔍 RAG Engine<br/>混合检索 Dense+Sparse"]
+        Embedder["🧬 Embedder<br/>向量化+Chunking"]
+        Reranker["🎯 Reranker<br/>Cross-Encoder精排"]
+    end
+
+    subgraph W["⚡ Workflow 编排域 (核心域)"]
+        direction TB
+        Team["👥 Team<br/>团队+角色插槽"]
+        Session["💬 Session<br/>会话生命周期"]
+        SwarmE["💬 Swarm Engine<br/>三阶段群聊·HITL检测"]
+        SupE["👑 Supervisor Engine<br/>M0-M7管道·层级委派"]
+        LangE["🔀 LangGraph Engine<br/>拓扑排序·7节点·分层并行"]
+        HITL["🎯 HITL System<br/>三级检测+4种提取"]
+        OrgTree["🌳 Org Hierarchy<br/>层级委派树+LCA审核"]
+        M5["📝 M5 Context Pipeline<br/>WorkerContext组装"]
+        M8["📬 M8 PeerMailbox<br/>Agent对等通信"]
+    end
+
+    subgraph Inf["🔩 Infrastructure 基础设施域"]
+        direction TB
+        DB[("🗄️ PostgreSQL 16<br/>主存储·JSONB·UUID")]
+        Redis[("⚡ Redis 7<br/>缓存·Blackboard·限流")]
+        LLM["🤖 Model Adapter<br/>LiteLLM·20+Provider"]
+        Workspace["📂 Workspace<br/>按Session隔离·Snapshot"]
+        Security["🔒 Security<br/>Fernet加密·API Key"]
+    end
+
+    subgraph H["🛡️ Harness 横切保障层"]
+        direction LR
+        H1["before<br/>_build_prompt<br/>_inject_context<br/>_check_token"]
+        H2["after<br/>_extract_files<br/>_record_tokens<br/>_persist+audit"]
+        H3["verify<br/>盲审·drift检测<br/>选非生产者Agent"]
+        H4["cleanup<br/>资源回收<br/>状态清理"]
+        Loop["🔄 Loop Engine<br/>三分类错误·四步恢复"]
+        Obs["👁️ Observer<br/>15种EventType<br/>EventBus+DB持久化"]
+        SecF["🔒 Security Filter<br/>注入检测·PII脱敏"]
+    end
+
+    API -.-> I
+    API -.-> A
+    API -.-> K
+    API -.-> W
+    API -.-> Inf
+    A -.-> I
+    A -.-> K
+    W -.-> A
+    W -.-> K
+    H -.-> W
+    H -.-> A
+    AgentR --- Persona
+    AgentR --- ModelE
+    AgentR --- ToolE
+    H1 --> H2 --> H3 --> H4
+
+    classDef identity fill:#4fc3f720,stroke:#4fc3f7,color:#4fc3f7
+    classDef agent fill:#81c78420,stroke:#81c784,color:#81c784
+    classDef knowledge fill:#ffb74d20,stroke:#ffb74d,color:#ffb74d
+    classDef workflow fill:#ef535020,stroke:#ef5350,color:#ef5350
+    classDef infra fill:#90a4ae20,stroke:#90a4ae,color:#90a4ae
+    classDef harness fill:#ce93d820,stroke:#ce93d8,color:#ce93d8
+    class Persona,ModelE,ToolE identity
+    class AgentR,Memory,ContextM,Skill,Fallback agent
+    class KB,RAG,Embedder,Reranker knowledge
+    class Team,Session,SwarmE,SupE,LangE,HITL,OrgTree,M5,M8 workflow
+    class DB,Redis,LLM,Workspace,Security infra
+    class H1,H2,H3,H4,Loop,Obs,SecF harness
+</pre>
+</div>
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot" style="background:#4fc3f7"></span>Identity 身份域</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#81c784"></span>Agent 智能域</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ffb74d"></span>Knowledge 知识域</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ef5350"></span>Workflow 编排域（核心域）</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#90a4ae"></span>Infrastructure 基础设施域</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ce93d8"></span>Harness 横切保障层</span>
+</div>
+</div>
+
+<!-- ==================== 图2: 五层技术架构 ==================== -->
+<div class="section">
+<h2>🏛️ 图2: 五层技术架构 + Harness 横切保障层</h2>
+<div class="mermaid-wrap">
+<pre class="mermaid">
+graph TB
+    subgraph FE["🖥️ L1 交互层"]
+        direction LR
+        CV["💬 ChatRoomView<br/>三模式统一入口"]
+        CS["📜 ChatStream<br/>消息时间线+Markdown"]
+        DH["📂 DrawerHost<br/>4抽屉·最多3开"]
+        HC["🎯 HITLCard<br/>三状态行为机"]
+        CI["⌨️ ChatInput<br/>四状态·永不禁用"]
+    end
+
+    subgraph CO["📡 L2 通信层"]
+        direction LR
+        WS["🔌 WebSocket<br/>单连接多路复用"]
+        ST["⚡ StreamToken<br/>逐token流式推送"]
+        RA["🌐 REST API<br/>CRUD+历史加载"]
+    end
+
+    subgraph OR["⚙️ L3 编排层 (Workflow Domain)"]
+        direction LR
+        RT["🚦 Router<br/>mode→Engine"]
+        SWE["💬 Swarm<br/>三阶段群聊"]
+        SPE["👑 Supervisor<br/>M0-M7管道"]
+        LGE["🔀 LangGraph<br/>DAG工作流"]
+        HD["🎯 HITL Detector<br/>三级检测"]
+        OH["🌳 Org Hierarchy<br/>层级委派树"]
+    end
+
+    subgraph CA["🧩 L4 能力层 (Identity+Agent+Knowledge)"]
+        direction LR
+        AF["🏭 AgentFactory<br/>组装Agent"]
+        MM["💾 Memory L1-L4<br/>四层记忆·裁剪"]
+        CP["📚 ContextPipeline<br/>M5上下文组装"]
+        RAG["🔍 RAG Engine<br/>混合检索"]
+        MA["🤖 ModelAdapter<br/>LiteLLM适配"]
+        FC["⛓️ FallbackChain<br/>模型降级"]
+        WM["📂 WorkspaceMgr<br/>会话隔离"]
+        AP["🏊 AgentPool<br/>注册发现"]
+    end
+
+    subgraph DA["🗄️ L5 数据层"]
+        direction LR
+        PG[("PostgreSQL 16<br/>主存储")]
+        RD[("Redis 7<br/>缓存/消息")]
+    end
+
+    subgraph HL["🛡️ Harness 横切保障层"]
+        direction LR
+        HBE["① before_execution<br/>Prompt构建+上下文注入+Token检查"]
+        HAF["② after_execution<br/>文件提取+Token统计+持久化+审计"]
+        HVE["③ verify<br/>独立盲审+drift检测"]
+        HCL["④ cleanup<br/>资源回收+状态清理"]
+        LPE["🔄 Loop Engine<br/>三分类错误·四步恢复"]
+        OBS["👁️ Observer<br/>15种EventType·EventBus"]
+        SEC["🔒 Security Filter<br/>注入检测·PII脱敏·限流"]
+    end
+
+    FE -->|"WS JSON"| CO
+    CO -->|"async function"| OR
+    OR -->|"function call"| CA
+    CA -->|"SQL/Redis"| DA
+    HL -.->|"注入点"| OR
+    HL -.->|"注入点"| CA
+
+    classDef fe fill:#7e57c220,stroke:#7e57c2,color:#b39ddb
+    classDef co fill:#4fc3f720,stroke:#4fc3f7,color:#4fc3f7
+    classDef orc fill:#ef535020,stroke:#ef5350,color:#ef5350
+    classDef cap fill:#81c78420,stroke:#81c784,color:#81c784
+    classDef dat fill:#90a4ae20,stroke:#90a4ae,color:#90a4ae
+    classDef har fill:#ce93d820,stroke:#ce93d8,color:#ce93d8
+    class CV,CS,DH,HC,CI fe
+    class WS,ST,RA co
+    class RT,SWE,SPE,LGE,HD,OH orc
+    class AF,MM,CP,RAG,MA,FC,WM,AP cap
+    class PG,RD dat
+    class HBE,HAF,HVE,HCL,LPE,OBS,SEC har
+</pre>
+</div>
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot" style="background:#b39ddb"></span>交互层</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#4fc3f7"></span>通信层</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ef5350"></span>编排层</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#81c784"></span>能力层</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#90a4ae"></span>数据层</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ce93d8"></span>Harness保障层</span>
+  <span class="legend-item" style="margin-left:20px;">→ 同步调用 &nbsp; -→ 横切注入</span>
+</div>
+</div>
+
+<!-- ==================== 图3: Supervisor 核心流程 ==================== -->
+<div class="section">
+<h2>⚡ 图3: Supervisor 模式核心流程 (M0-M7 + M7 drift→M1 回退)</h2>
+<div class="mermaid-wrap">
+<pre class="mermaid">
+sequenceDiagram
+    actor User as 👤 用户
+    participant R as 🚦 Router
+    participant M0 as M0 意图路由
+    participant M1 as M1 需求分析
+    participant M2 as M2 澄清确认
+    participant HITL as 🎯 HITL
+    participant M3 as M3 Agent编排
+    participant M4 as M4 任务分解
+    participant M6 as M6 层级执行
+    participant Org as 🌳 OrgHierarchy
+    participant Agent as 🤖 Agent
+    participant M7 as M7 独立验证
+
+    User->>R: 发送需求
+    R->>M0: 分析意图
+    alt 单Agent路径
+        M0-->>R: direct → 直接回复
+    else 多Agent路径
+        M0-->>R: multi → M1
+    end
+
+    R->>M1: 需求分析
+    alt confirm
+        M1-->>R: 确认 → HITL
+    else clarify
+        M1-->>R: 澄清 → M2
+    end
+
+    R->>M2: 提澄清问题
+    M2->>HITL: 展示问题卡片
+    HITL->>User: 请回答
+    User->>HITL: 回答
+    HITL->>M1: 带回答案重分析
+
+    R->>M3: Agent编排
+    alt 就绪
+        M3-->>R: → M4
+    else 缺Agent
+        M3-->>R: → HITL(邀请)
+    end
+
+    R->>M4: 任务分解
+    M4-->>R: DAG图 → M6
+
+    R->>M6: 执行
+    M6->>Org: load_org_structure()
+    Org-->>M6: 组织层级树
+    loop 每层委派
+        M6->>Agent: delegate(goal+role_context)
+        Agent-->>M6: artifact
+        M6->>Org: find_reviewer_for_level()
+        Org-->>M6: 审核人
+    end
+
+    R->>M7: 验证
+    M7->>Agent: 盲审(需求+产物,不给思考链)
+    Agent-->>M7: verdict
+
+    alt passed
+        M7->>HITL: 展示结果确认
+        HITL->>User: 确认完成?
+        User->>HITL: ✅确认
+        HITL-->>R: END
+    else major(代码bug)
+        M7-->>R: 回 M6 重做
+    else drift(需求理解偏差)
+        Note over M7,M1: 🔁 核心纠正链路
+        M7-->>R: 回 M1 重分析
+        Note right of M1: 带验证反馈<br/>清除task_dag<br/>清除旧artifacts
+    else critical
+        M7->>HITL: 升级人工决策
+    end
+</pre>
+</div>
+<div class="legend">
+  <span class="legend-item" style="color:#ffb74d;">🔁 drift_detected → M1：验证发现需求理解偏差时，回 M1 带反馈重新分析需求（而非盲目重做 M6）</span>
+  <span class="legend-item" style="color:#81c784;">👁️ 盲审：验证员只看到需求+产物，看不到 Worker 思考链 → 防止确认偏差</span>
+</div>
+</div>
+
+</div>
+
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#1a1f2e', primaryTextColor: '#e2e8f0', primaryBorderColor: '#333',
+    lineColor: '#555', secondaryColor: '#2d1b3d', tertiaryColor: '#111827',
+    background: '#111827', mainBkg: '#1a1f2e', nodeBorder: '#333',
+    clusterBkg: '#111827', clusterBorder: '#333', titleColor: '#e2e8f0',
+    edgeLabelBackground: '#1a1f2e', actorBorder: '#333', actorBkg: '#1a1f2e',
+    actorTextColor: '#e2e8f0', actorLineColor: '#555', signalColor: '#e2e8f0',
+    signalTextColor: '#e2e8f0', labelBoxBkgColor: '#1a1f2e', labelBoxBorderColor: '#333',
+    labelTextColor: '#e2e8f0', loopTextColor: '#e2e8f0', noteBorderColor: '#333',
+    noteBkgColor: '#1a1f2e', noteTextColor: '#e2e8f0', activationBorderColor: '#555',
+    activationBkgColor: '#1a1f2e', sequenceNumberColor: '#e2e8f0', fontSize: '13px'
+  },
+  securityLevel: 'loose'
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图4: Agent 生命周期 + Harness — The Boy Assistant v5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',Roboto,sans-serif;background:#0f0f1a;color:#e0e0e0;padding:24px}
+.container{max-width:1300px;margin:0 auto}
+h1{text-align:center;font-size:22px;margin-bottom:4px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:28px;font-size:13px}
+
+/* ===== 模块卡片通用 ===== */
+.section{background:#111827;border-radius:14px;padding:24px;border:1px solid rgba(255,255,255,.06);margin-bottom:24px}
+.section h2{font-size:15px;color:#888;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:8px}
+
+/* ===== 图A: 6阶段管道 ===== */
+.pipeline{display:flex;align-items:flex-start;gap:4px;flex-wrap:wrap;justify-content:center}
+.pipe-stage{width:160px;flex-shrink:0}
+.pipe-card{padding:14px 12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.08);min-height:105px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:.15s}
+.pipe-card .icon{font-size:22px;margin-bottom:4px}
+.pipe-card .name{font-size:12px;font-weight:600;margin-bottom:2px}
+.pipe-card .sub{font-size:9px;color:#888;line-height:1.3}
+
+.pc-s1{background:#1a1530}.pc-s1 .name{color:#b39ddb}
+.pc-s2{background:#152530}.pc-s2 .name{color:#4fc3f7}
+.pc-s3{background:#152515}.pc-s3 .name{color:#81c784}
+.pc-s4{background:#251515}.pc-s4 .name{color:#ef5350}
+.pc-s5{background:#252015}.pc-s5 .name{color:#ffb74d}
+.pc-s6{background:#2d1b3d}.pc-s6 .name{color:#ce93d8}
+
+.pipe-arrow{display:flex;align-items:center;justify-content:center;width:32px;flex-shrink:0;color:#444;font-size:18px;font-weight:700;margin-top:40px}
+.pipe-arrow.harness{color:#ce93d8}
+
+/* ===== 图B: Harness 4钩子展开 ===== */
+.hooks{display:flex;gap:10px;flex-wrap:wrap}
+.hook-card{flex:1;min-width:200px;padding:14px 16px;border-radius:10px;background:#2d1b3d;border:1px solid rgba(206,147,216,.15);transition:.15s}
+.hook-card:hover{border-color:rgba(206,147,216,.3);transform:translateY(-1px)}
+.hook-card .h-num{font-size:20px;font-weight:800;color:#ce93d8;margin-bottom:4px}
+.hook-card .h-name{font-size:13px;font-weight:600;color:#ce93d8;margin-bottom:6px}
+.hook-card .h-items{font-size:10px;color:#a78bfa;line-height:1.6}
+.hook-card .h-items span{display:block}
+
+/* ===== 图C: Context 组装 ===== */
+.ctx-flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
+.ctx-block{padding:10px 16px;border-radius:8px;text-align:center;transition:.15s;flex-shrink:0}
+.ctx-block .ctx-icon{font-size:16px;margin-bottom:2px}
+.ctx-block .ctx-name{font-size:11px;font-weight:600}
+.ctx-block .ctx-desc{font-size:9px;color:#888;margin-top:1px}
+.ctx-arrow{color:#555;font-size:16px;flex-shrink:0}
+.cb-m5{background:rgba(129,199,132,.06);border:1px solid rgba(129,199,132,.15)}.cb-m5 .ctx-name{color:#81c784}
+.cb-m8{background:rgba(79,195,247,.06);border:1px solid rgba(79,195,247,.15)}.cb-m8 .ctx-name{color:#4fc3f7}
+.cb-fmt{background:rgba(255,183,77,.06);border:1px solid rgba(255,183,77,.15)}.cb-fmt .ctx-name{color:#ffb74d}
+.cb-code{background:rgba(206,147,216,.06);border:1px solid rgba(206,147,216,.15)}.cb-code .ctx-name{color:#ce93d8}
+.cb-out{background:rgba(239,83,80,.06);border:1px solid rgba(239,83,80,.15)}.cb-out .ctx-name{color:#ef5350}
+
+/* ===== 图D: 三引擎差异 ===== */
+.engine-row{display:flex;gap:10px;flex-wrap:wrap}
+.engine-card{flex:1;min-width:240px;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.06);transition:.15s;cursor:default}
+.engine-card:hover{border-color:rgba(255,255,255,.12)}
+.engine-card .ec-head{font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.engine-card .ec-body{font-size:10px;color:#999;line-height:1.55}
+.engine-card .ec-body b{color:#ccc}
+.ec-swarm{background:rgba(79,195,247,.04);border-color:rgba(79,195,247,.12)}.ec-swarm .ec-head{color:#4fc3f7}
+.ec-sup{background:rgba(239,83,80,.04);border-color:rgba(239,83,80,.12)}.ec-sup .ec-head{color:#ef5350}
+.ec-lg{background:rgba(255,183,77,.04);border-color:rgba(255,183,77,.12)}.ec-lg .ec-head{color:#ffb74d}
+
+/* ===== 图E: Token 裁剪 ===== */
+.token-bar{display:flex;height:28px;border-radius:6px;overflow:hidden;margin:10px 0}
+.token-seg{display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#fff}
+.token-label{font-size:9px;color:#888;margin-top:4px;text-align:center}
+
+/* detail */
+.detail-panel{display:none;background:#1e1e2e;border-radius:12px;padding:22px;margin-bottom:24px;border:1px solid #333}
+.detail-panel.active{display:block}
+.detail-panel .close{float:right;cursor:pointer;color:#888;font-size:18px;background:none;border:none}
+.detail-panel .close:hover{color:#fff}
+.detail-panel h3{font-size:16px;margin-bottom:6px}
+.detail-content{margin-top:10px;font-size:12px;color:#ccc;line-height:1.7}
+.detail-content b{color:#e0e0e0}
+.tag{padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;margin-right:4px}
+.tag.p0{background:#ff475720;color:#ff4757;border:1px solid #ff475740}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🔄 Agent 全生命周期 + Harness 横切拦截</h1>
+<p class="subtitle">6 阶段执行管道 · Harness 4 钩子 · 三引擎 Context 差异</p>
+
+<!-- ===== 图A: 6阶段流水线 ===== -->
+<div class="section">
+  <h2>⚡ Agent 执行 6 阶段管道</h2>
+  <div class="pipeline">
+    <div class="pipe-stage">
+      <div class="pipe-card pc-s1" onclick="show('s1')">
+        <div class="icon">🚀</div><div class="name">① 引擎触发</div><div class="sub">各Engine构建<br/>ExecutionContext</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-stage">
+      <div class="pipe-card pc-s2" onclick="show('s2')">
+        <div class="icon">🛡️</div><div class="name">② Harness.before</div><div class="sub">Prompt构建<br/>上下文注入<br/>Token检查</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-stage">
+      <div class="pipe-card pc-s3" onclick="show('s3')">
+        <div class="icon">🤖</div><div class="name">③ LLM 调用</div><div class="sub">agent_chat(stream)<br/>LiteLLM适配<br/>Fallback降级</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-stage">
+      <div class="pipe-card pc-s4" onclick="show('s4')">
+        <div class="icon">📦</div><div class="name">④ Harness.after</div><div class="sub">文件提取<br/>Token统计<br/>持久化+审计</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-stage">
+      <div class="pipe-card pc-s5" onclick="show('s5')">
+        <div class="icon">🔧</div><div class="name">⑤ 引擎后处理</div><div class="sub">更新State<br/>推送WS事件<br/>后续路由</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-stage">
+      <div class="pipe-card pc-s6" onclick="show('s6')">
+        <div class="icon">👁️</div><div class="name">⑥ Observer</div><div class="sub">事件发射<br/>异步分发<br/>DB持久化</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 图B: Harness 4钩子展开 ===== -->
+<div class="section">
+  <h2>🛡️ Harness 4 钩子详解 (harness.py · 473行)</h2>
+  <div class="hooks">
+    <div class="hook-card" onclick="show('h1')">
+      <div class="h-num">①</div><div class="h-name">before_execution</div>
+      <div class="h-items"><span>_build_prompt → 调用M5+M8</span><span>_inject_context → Memory+RAG</span><span>_check_token → 预算检查</span><span>_emit → AE_STARTED事件</span></div>
+    </div>
+    <div class="hook-card" onclick="show('h2')">
+      <div class="h-num">②</div><div class="h-name">after_execution</div>
+      <div class="h-items"><span>_extract_files → workspace写入</span><span>_record_tokens → 统计</span><span>_persist_with_retry → 记忆落盘</span><span>_audit_log → 结构化审计</span></div>
+    </div>
+    <div class="hook-card" onclick="show('h3')">
+      <div class="h-num">③</div><div class="h-name">verify</div>
+      <div class="h-items"><span>选非生产者Agent（公平轮转）</span><span>盲审: 只给需求+产物</span><span>不给思考链 → 防确认偏差</span><span>drift_detected → 回M1</span></div>
+    </div>
+    <div class="hook-card" onclick="show('h4')">
+      <div class="h-num">④</div><div class="h-name">cleanup</div>
+      <div class="h-items"><span>清空 Token 计数器</span><span>清除 _paused 暂停状态</span><span>回收会话级资源</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 图C: Context 组装 + Workspace ===== -->
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+  <div class="section" style="flex:2;min-width:400px">
+    <h2>📚 Context 组装链路 (_build_prompt)</h2>
+    <div class="ctx-flow">
+      <div class="ctx-block cb-m5">
+        <div class="ctx-icon">📝</div><div class="ctx-name">M5 Context Pipeline</div><div class="ctx-desc">提取需求锚+前置产物+角色上下文</div>
+      </div>
+      <div class="ctx-arrow">+</div>
+      <div class="ctx-block cb-m8">
+        <div class="ctx-icon">📬</div><div class="ctx-name">M8 PeerMailbox</div><div class="ctx-desc">拉取对等Agent未读消息</div>
+      </div>
+      <div class="ctx-arrow">→</div>
+      <div class="ctx-block cb-fmt">
+        <div class="ctx-icon">📋</div><div class="ctx-name">format_context</div><div class="ctx-desc">WorkerContext → 文本prompt</div>
+      </div>
+      <div class="ctx-arrow">+</div>
+      <div class="ctx-block cb-code">
+        <div class="ctx-icon">💻</div><div class="ctx-name">代码格式要求</div><div class="ctx-desc">仅 code_output_required</div>
+      </div>
+      <div class="ctx-arrow">→</div>
+      <div class="ctx-block cb-out">
+        <div class="ctx-icon">📤</div><div class="ctx-name">完整 Prompt</div><div class="ctx-desc">传给 agent_chat</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:10px;color:#666;text-align:center">
+      Token 裁剪: System > 当前任务 > 前置产物(≤3K) > PeerMsg(≤5条) > Memory > 历史(≤5轮)
+    </div>
+  </div>
+
+  <div class="section" style="flex:1;min-width:280px">
+    <h2>📂 Workspace 隔离</h2>
+    <div style="font-size:11px;color:#ccc;line-height:1.8">
+      <div>📁 <b>路径</b>: <code style="color:#81c784;font-size:10px">{BASE}/{session_id}/</code></div>
+      <div>🔍 <b>提取</b>: 正则匹配 ```语言 路径</div>
+      <div>🛡️ <b>安全</b>: startswith 防越权</div>
+      <div>📤 <b>推送</b>: files_changed WS事件</div>
+      <div>👁️ <b>展示</b>: ArtifactsDrawer 预览</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 图D: 三引擎差异 ===== -->
+<div class="section">
+  <h2>⚡ 三引擎 ExecutionContext 差异</h2>
+  <div class="engine-row">
+    <div class="engine-card ec-swarm">
+      <div class="ec-head">💬 Swarm</div>
+      <div class="ec-body">
+        <b>注入点</b>: Phase2 _agent_execute<br/>
+        <b>传递字段</b>: instruction + user_message<br/>
+        <b>特点</b>: 最简——群聊模式不需要 artifacts 和 org 上下文
+      </div>
+    </div>
+    <div class="engine-card ec-sup">
+      <div class="ec-head">👑 Supervisor</div>
+      <div class="ec-body">
+        <b>注入点</b>: m6_execute_worker<br/>
+        <b>传递字段</b>: + artifacts + peer_msgs<br/>+ org_role_context + retry_feedback<br/>
+        <b>特点</b>: 最丰富——包含层级委派和审核反馈
+      </div>
+    </div>
+    <div class="engine-card ec-lg">
+      <div class="ec-head">🔀 LangGraph</div>
+      <div class="ec-body">
+        <b>注入点</b>: _execute_agent_node<br/>
+        <b>传递字段</b>: + artifacts + depends_on<br/>+ code_output_required + workspace_path<br/>
+        <b>特点</b>: 带代码格式要求——DAG节点需要产出文件
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- detail panel -->
+<div class="detail-panel" id="panel">
+  <button class="close" onclick="closePanel()">✕</button>
+  <h3 id="pt"></h3><div style="margin:6px 0" id="ptags"></div>
+  <div class="detail-content" id="pc"></div>
+</div>
+</div>
+
+<script>
+const D={
+s1:{t:'① 引擎触发',tags:['P0'],c:'各Engine在调用Agent前构造<b>ExecutionContext</b>数据类(harness.py:40)。<br><br>核心字段: session_id·team_id·agent_id·agent_name·node_key·task_id·instruction·user_message·artifacts·depends_on·workspace_path·code_output_required'},
+s2:{t:'② Harness.before_execution',tags:['P0'],c:'<b>harness.py:217</b><br><br>四步: _build_prompt(M5+M8)→_inject_context(Memory+RAG)→_check_token_budget→_emit+send_fn<br><br>返回<b>BeforeExecutionResult</b>: prompt·context·token_budget·is_blocked·block_reason<br>若 is_blocked=true，引擎直接return不调用LLM'},
+s3:{t:'③ LLM 调用',tags:['P0'],c:'<b>agent_chat.py</b><br><br><b>流式</b>: agent_chat_stream→async for token→send_fn(stream_token)→前端实时渲染<br><b>非流式</b>: agent_chat→一次返回完整结果·流式失败自动回退<br><b>底层</b>: LiteLLM统一适配20+Provider·DeepSeek 120s超时<br><b>Fallback</b>: 超时→指数退避重试(≤3次)→降级次选模型'},
+s4:{t:'④ Harness.after_execution',tags:['P0'],c:'<b>harness.py:258</b><br><br>四步: _extract_files(正则解析代码块→workspace)→_record_tokens(token_tracker)→_persist_with_retry(MemoryManager·独立DB session·2次重试)→_audit_log(结构化审计)'},
+s5:{t:'⑤ 引擎后处理',tags:['P1'],c:'<b>Swarm</b>: 推送agent_message·HITL三级检测<br><b>Supervisor</b>: 更新CollabState·M8 peer_mailbox.send()·触发审核链<br><b>LangGraph</b>: 更新artifacts·推送task_status·Condition/Router求值裁剪分支'},
+s6:{t:'⑥ Observer',tags:['P1'],c:'<b>observer/</b><br><br>EventBus: 异步发布订阅·asyncio.create_task非阻塞<br>15种EventType·独立DB session持久化·JSONB payload'},
+h1:{t:'before_execution — 执行前',tags:['P0'],c:'<b>_build_prompt()</b>: 调用M5 context_pipeline + M8 peer_mailbox 构建完整prompt<br><b>_inject_context()</b>: ContextManager注入Memory(L2/L3) + RAG检索结果<br><b>_check_token_budget()</b>: 剩余<1000→阻止执行<br><b>_emit()</b>: AGENT_EXECUTION_STARTED'},
+h2:{t:'after_execution — 执行后',tags:['P0'],c:'<b>_extract_files()</b>: 正则解析```语言 路径→workspace写入·安全校验<br><b>_record_tokens()</b>: token_tracker.record(trace_id,span_id,model,provider,prompt,completion)<br><b>_persist_with_retry()</b>: MemoryManager·独立DB session·≤2次重试<br><b>_audit_log()</b>: 结构化日志'},
+h3:{t:'verify — 独立验证',tags:['P0'],c:'选非生产者Agent(按reviewed_count最少公平分配)→盲审(只给需求+产物·不给思考链)<br>→ 返回VerificationResult(passed/score/issues/suggestions)<br>→ 不通过→delegate给LoopEngine处理'},
+h4:{t:'cleanup — 资源清理',tags:['P1'],c:'会话结束时: 清空Token计数器·清除_paused暂停状态·清理会话级资源'},
+};
+function show(k){const d=D[k];if(!d)return;const p=document.getElementById('panel');document.getElementById('pt').textContent=d.t;document.getElementById('ptags').innerHTML=d.tags.map(t=>'<span class="tag p0">'+t+'</span>').join('');document.getElementById('pc').innerHTML=d.c;p.classList.add('active');p.scrollIntoView({behavior:'smooth'})}
+function closePanel(){document.getElementById('panel').classList.remove('active')}
+</script>
+</body></html>

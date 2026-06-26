@@ -1,0 +1,11 @@
+trigger:
+  keywords: ["测试用例", "单元测试", "pytest", "jest", "测试代码", "E2E测试"]
+parameters:
+  - name: test_type
+    description: 测试类型 (unit/integration/e2e)
+    required: false
+    default: unit
+  - name: framework
+    description: 测试框架 (pytest/jest)
+    required: false
+    default: pytest

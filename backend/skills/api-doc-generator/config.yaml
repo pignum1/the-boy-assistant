@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["API文档", "接口文档", "OpenAPI", "Swagger", "接口清单"]
+parameters:
+  - name: framework
+    description: 框架 (fastapi/express/flask)
+    required: false
+    default: fastapi

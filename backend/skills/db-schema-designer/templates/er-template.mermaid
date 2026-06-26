@@ -1,0 +1,22 @@
+erDiagram
+    {TABLE_A} ||--o{ {TABLE_B} : "has many"
+    {TABLE_B }o--|| {TABLE_C} : "belongs to"
+
+    {TABLE_A} {
+        uuid id PK
+        varchar name
+        timestamptz created_at
+    }
+
+    {TABLE_B} {
+        uuid id PK
+        uuid {table_a}_id FK
+        varchar status
+        timestamptz created_at
+    }
+
+    {TABLE_C} {
+        uuid id PK
+        varchar name
+        int quantity
+    }

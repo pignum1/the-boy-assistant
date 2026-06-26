@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant Orch as Saga Orchestrator
+    participant Order as Order Service
+    participant Payment as Payment Service
+    participant Inventory as Inventory Service
+    participant Notify as Notification Service
+
+    Orch->>Order: Create Order (PENDING)
+    Order-->>Orch: Order Created
+
+    Orch->>Payment: Reserve Amount
+    alt 支付成功
+        Payment-->>Orch: RESERVED
+        Orch->>Inventory: Reserve Stock
+        alt 库存充足
+            Inventory-->>Orch: RESERVED
+            Orch->>Payment: Confirm Payment
+            Payment-->>Orch: CONFIRMED
+            Orch->>Order: Update Status → CONFIRMED
+            Orch-)Notify: Send Confirmation Email
+        else 库存不足
+            Inventory-->>Orch: FAILED
+            Orch->>Payment: Cancel Reservation
+            Payment-->>Orch: CANCELLED
+            Orch->>Order: Update Status → FAILED
+        end
+    else 支付失败
+        Payment-->>Orch: FAILED
+        Orch->>Order: Update Status → FAILED
+    end

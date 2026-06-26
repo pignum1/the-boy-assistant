@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["性能测试", "压力测试", "负载测试", "压测", "Locust", "k6"]
+parameters:
+  - name: tool
+    description: 测试工具 (locust/k6)
+    required: false
+    default: locust

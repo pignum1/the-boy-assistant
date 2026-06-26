@@ -1,0 +1,6 @@
+trigger:
+  keywords: ["CI/CD", "流水线", "pipeline", "GitHub Actions", "GitLab CI", "Jenkins"]
+parameters:
+  - name: platform
+    description: CI平台 (github/gitlab/jenkins)
+    required: true

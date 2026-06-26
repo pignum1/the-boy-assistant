@@ -1,0 +1,10 @@
+trigger:
+  keywords: ["代码审查", "code review", "代码评审", "代码质量", "PR审查"]
+parameters:
+  - name: language
+    description: 编程语言
+    required: false
+  - name: severity
+    description: 最低严重等级 (critical/major/minor)
+    required: false
+    default: minor

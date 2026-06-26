@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图3: Supervisor 决策流程 — The Boy Assistant v5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;
+  background:radial-gradient(ellipse at 50% 0%, #141a2e 0%, #0a0e17 70%);
+  color:#e0e0e0;padding:28px 16px;display:flex;justify-content:center;
+}
+.page{max-width:980px;width:100%}
+h1{text-align:center;font-size:23px;margin-bottom:2px;background:linear-gradient(135deg,#a78bfa,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.subtitle{text-align:center;color:#6b7280;margin-bottom:28px;font-size:13px}
+svg{width:100%;height:auto;display:block}
+</style>
+</head>
+<body>
+<div class="page">
+<h1>⚡ Supervisor 模式 — 决策流程</h1>
+<p class="subtitle">M0 → M1 → M2 → M3 → M4 → M6 → M7 → ✓ &nbsp;&nbsp; 菱形=决策 &nbsp; 虚线=回路 &nbsp; 点线=HITL</p>
+<svg viewBox="0 0 980 1620" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 箭头 -->
+    <marker id="a" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#64748b"/></marker>
+    <marker id="ag" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#34d399"/></marker>
+    <marker id="ao" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#f59e0b"/></marker>
+    <marker id="ap" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#a78bfa"/></marker>
+    <marker id="ar" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#f87171"/></marker>
+
+    <!-- 渐变 -->
+    <linearGradient id="gStart" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#065f46"/><stop offset="100%" stop-color="#064e3b"/></linearGradient>
+    <linearGradient id="gEnd" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#065f46"/><stop offset="100%" stop-color="#064e3b"/></linearGradient>
+    <linearGradient id="gPro" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1e293b"/><stop offset="100%" stop-color="#1a2332"/></linearGradient>
+    <linearGradient id="gDec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b200f"/><stop offset="100%" stop-color="#2d1808"/></linearGradient>
+    <linearGradient id="gHitl" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b1f4e"/><stop offset="100%" stop-color="#2d163b"/></linearGradient>
+    <linearGradient id="gDrift" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b1515"/><stop offset="100%" stop-color="#2d0f0f"/></linearGradient>
+    <linearGradient id="gM0bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(56,189,248,0.06)"/><stop offset="100%" stop-color="rgba(56,189,248,0.02)"/></linearGradient>
+    <linearGradient id="gM1bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(52,211,153,0.06)"/><stop offset="100%" stop-color="rgba(52,211,153,0.02)"/></linearGradient>
+    <linearGradient id="gM6bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(239,68,68,0.05)"/><stop offset="100%" stop-color="rgba(239,68,68,0.01)"/></linearGradient>
+    <linearGradient id="gM7bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(56,189,248,0.06)"/><stop offset="100%" stop-color="rgba(56,189,248,0.02)"/></linearGradient>
+
+    <!-- 投影 -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <filter id="shadowD" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#f59e0b" flood-opacity="0.15"/>
+    </filter>
+
+    <!-- 节点模板 -->
+    <g id="g-proc"><rect x="-115" y="-24" width="230" height="48" rx="10" fill="url(#gPro)" stroke="#334155" stroke-width="1.2" filter="url(#shadow)"/></g>
+    <g id="g-proc-lg"><rect x="-140" y="-28" width="280" height="56" rx="10" fill="url(#gPro)" stroke="#334155" stroke-width="1.2" filter="url(#shadow)"/></g>
+    <g id="g-decision"><polygon points="0,-50 95,0 0,50 -95,0" fill="url(#gDec)" stroke="#f59e0b" stroke-width="1.8" filter="url(#shadowD)"/></g>
+    <g id="g-hitl"><rect x="-80" y="-20" width="160" height="40" rx="8" fill="url(#gHitl)" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="6,3" filter="url(#shadow)"/></g>
+    <g id="g-hitl-sm"><rect x="-75" y="-18" width="150" height="36" rx="8" fill="url(#gHitl)" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="6,3" filter="url(#shadow)"/></g>
+    <g id="g-start"><rect x="-80" y="-22" width="160" height="44" rx="22" fill="url(#gStart)" stroke="#34d399" stroke-width="1.8" filter="url(#shadow)"/></g>
+    <g id="g-end"><rect x="-60" y="-18" width="120" height="36" rx="18" fill="url(#gEnd)" stroke="#34d399" stroke-width="1.8" filter="url(#shadow)"/></g>
+  </defs>
+
+  <!-- ===== 阶段背景 ===== -->
+  <rect x="15" y="10" width="950" height="145" rx="12" fill="url(#gM0bg)"/>
+  <rect x="15" y="160" width="950" height="175" rx="12" fill="url(#gM1bg)"/>
+  <rect x="15" y="340" width="950" height="135" rx="12" fill="url(#gM1bg)" opacity="0.5"/>
+  <rect x="15" y="480" width="950" height="170" rx="12" fill="url(#gM1bg)" opacity="0.3"/>
+  <rect x="15" y="655" width="950" height="460" rx="12" fill="url(#gM6bg)" stroke="rgba(239,68,68,0.15)" stroke-width="1" stroke-dasharray="8,4"/>
+  <rect x="15" y="1120" width="950" height="260" rx="12" fill="url(#gM7bg)"/>
+
+  <!-- 阶段标签 -->
+  <text x="35" y="30" font-size="12" fill="#38bdf8" font-weight="800" font-family="sans-serif" letter-spacing="2">M0</text>
+  <text x="35" y="180" font-size="12" fill="#34d399" font-weight="800" font-family="sans-serif" letter-spacing="2">M1</text>
+  <text x="35" y="360" font-size="12" fill="#c084fc" font-weight="800" font-family="sans-serif" letter-spacing="2">M2</text>
+  <text x="35" y="500" font-size="12" fill="#f59e0b" font-weight="800" font-family="sans-serif" letter-spacing="2">M3-M4</text>
+  <text x="35" y="675" font-size="12" fill="#ef4444" font-weight="800" font-family="sans-serif" letter-spacing="2">M6</text>
+  <text x="35" y="1140" font-size="12" fill="#38bdf8" font-weight="800" font-family="sans-serif" letter-spacing="2">M7</text>
+
+  <!-- 主线 -->
+  <line x1="490" y1="52" x2="490" y2="1550" stroke="#1e293b" stroke-width="2" stroke-dasharray="2,6" opacity="0.5"/>
+
+  <!-- ===== M0 ===== -->
+  <use href="#g-start" x="490" y="58"/>
+  <text x="490" y="54" text-anchor="middle" font-size="13" fill="#34d399" font-weight="700" font-family="sans-serif">👤 用户需求</text>
+
+  <line x1="490" y1="80" x2="490" y2="105" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <use href="#g-decision" x="490" y="158"/>
+  <text x="490" y="152" text-anchor="middle" font-size="12" fill="#fbbf24" font-weight="700" font-family="sans-serif">M0</text>
+  <text x="490" y="168" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="500" font-family="sans-serif">意图路由</text>
+
+  <!-- 简单 → 左 -->
+  <line x1="395" y1="158" x2="180" y2="158" stroke="#34d399" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="288" y="150" text-anchor="middle" font-size="10" fill="#34d399" font-family="sans-serif">简单</text>
+  <use href="#g-end" x="100" y="140"/>
+  <text x="100" y="134" text-anchor="middle" font-size="11" fill="#34d399" font-weight="600" font-family="sans-serif">单Agent ✓</text>
+
+  <!-- 复杂 → 下 -->
+  <line x1="490" y1="208" x2="490" y2="238" stroke="#f59e0b" stroke-width="2" marker-end="url(#ao)"/>
+  <text x="505" y="226" font-size="10" fill="#f59e0b" font-family="sans-serif">复杂</text>
+
+  <!-- ===== M1 ===== -->
+  <use href="#g-proc" x="490" y="241"/>
+  <text x="490" y="237" text-anchor="middle" font-size="13" fill="#34d399" font-weight="700" font-family="sans-serif">M1 需求分析</text>
+  <text x="490" y="253" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">输出 requirements_anchor（不可变需求锚点）</text>
+
+  <line x1="490" y1="265" x2="490" y2="293" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <use href="#g-decision" x="490" y="346"/>
+  <text x="490" y="338" text-anchor="middle" font-size="12" fill="#fbbf24" font-weight="700" font-family="sans-serif">M1 决策</text>
+  <text x="490" y="354" text-anchor="middle" font-size="10" fill="#fbbf24" font-family="sans-serif">confirm / clarify</text>
+
+  <!-- confirm → 左 → HITL -->
+  <line x1="395" y1="346" x2="190" y2="346" stroke="#34d399" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="293" y="338" text-anchor="middle" font-size="10" fill="#34d399" font-family="sans-serif">confirm · 需求清晰</text>
+
+  <use href="#g-hitl" x="110" y="330"/>
+  <text x="110" y="326" text-anchor="middle" font-size="12" fill="#c084fc" font-weight="700" font-family="sans-serif">⏸ HITL 确认</text>
+  <text x="110" y="342" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="sans-serif">展示方案 · 用户拍板</text>
+
+  <!-- HITL 三分支：从底部中心向三个方向 -->
+  <line x1="110" y1="350" x2="50" y2="392" stroke="#34d399" stroke-width="1.5" marker-end="url(#ag)"/>
+  <line x1="110" y1="350" x2="110" y2="392" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <line x1="110" y1="350" x2="170" y2="392" stroke="#f87171" stroke-width="1.5"/>
+  <text x="65" y="382" font-size="9" fill="#34d399" font-family="sans-serif">✅</text>
+  <text x="116" y="382" font-size="9" fill="#f59e0b" font-family="sans-serif">✏</text>
+  <text x="176" y="382" font-size="9" fill="#f87171" font-family="sans-serif">❌</text>
+
+  <use href="#g-end" x="170" y="408"/>
+  <text x="170" y="404" text-anchor="middle" font-size="10" fill="#34d399" font-family="sans-serif">取消</text>
+
+  <!-- ✏修改 → 回 M1 -->
+  <path d="M110,392 Q110,422 30,422 Q30,265 375,265" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ao)"/>
+  <text x="2" y="345" font-size="9" fill="#f59e0b" font-family="sans-serif">↻ 修改→回M1</text>
+
+  <!-- clarify → 右 → M2 → HITL -->
+  <line x1="585" y1="346" x2="790" y2="346" stroke="#c084fc" stroke-width="2" marker-end="url(#a)"/>
+  <text x="688" y="338" text-anchor="middle" font-size="10" fill="#c084fc" font-family="sans-serif">clarify · 需要澄清</text>
+
+  <use href="#g-proc" x="790" y="328"/>
+  <text x="790" y="324" text-anchor="middle" font-size="12" fill="#c084fc" font-weight="700" font-family="sans-serif">M2 澄清确认</text>
+  <text x="790" y="340" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">生成 ≤3 个关键问题</text>
+
+  <line x1="790" y1="352" x2="790" y2="385" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <use href="#g-hitl-sm" x="790" y="405"/>
+  <text x="790" y="401" text-anchor="middle" font-size="11" fill="#c084fc" font-weight="600" font-family="sans-serif">⏸ HITL 回答</text>
+
+  <!-- clarify 回路 → 回 M1 -->
+  <path d="M790,423 Q790,455 930,455 Q930,265 585,265" fill="none" stroke="#c084fc" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a)"/>
+  <text x="935" y="360" font-size="9" fill="#c084fc" font-family="sans-serif">↻ force_confirm 回 M1</text>
+
+  <!-- ===== M3-M4 ===== -->
+  <line x1="490" y1="396" x2="490" y2="510" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <text x="505" y="455" font-size="9" fill="#94a3b8" font-family="sans-serif">已确认 →</text>
+
+  <use href="#g-proc" x="490" y="513"/>
+  <text x="490" y="509" text-anchor="middle" font-size="13" fill="#f59e0b" font-weight="700" font-family="sans-serif">M3 Agent 编排</text>
+  <text x="490" y="525" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">LLM 分析需求 · 匹配 Team 角色</text>
+
+  <line x1="490" y1="537" x2="490" y2="560" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <use href="#g-decision" x="490" y="613"/>
+  <text x="490" y="605" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="700" font-family="sans-serif">M3 决策</text>
+  <text x="490" y="620" text-anchor="middle" font-size="9" fill="#fbbf24" font-family="sans-serif">就绪 / 缺Agent</text>
+
+  <!-- 缺Agent → 右 → HITL → 回路 -->
+  <line x1="585" y1="613" x2="780" y2="613" stroke="#a78bfa" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+  <text x="683" y="605" text-anchor="middle" font-size="10" fill="#a78bfa" font-family="sans-serif">缺Agent</text>
+
+  <use href="#g-hitl-sm" x="780" y="595"/>
+  <text x="780" y="591" text-anchor="middle" font-size="11" fill="#c084fc" font-weight="600" font-family="sans-serif">⏸ HITL 邀请</text>
+
+  <path d="M780,613 L780,640 L590,640" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+  <text x="685" y="634" font-size="9" fill="#a78bfa" font-family="sans-serif">↻ 邀请后回 M3</text>
+
+  <!-- 就绪 → 下 → M4 -->
+  <line x1="490" y1="663" x2="490" y2="685" stroke="#34d399" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="505" y="677" font-size="10" fill="#34d399" font-family="sans-serif">就绪</text>
+
+  <use href="#g-proc" x="490" y="688"/>
+  <text x="490" y="684" text-anchor="middle" font-size="13" fill="#c084fc" font-weight="700" font-family="sans-serif">M4 任务分解</text>
+  <text x="490" y="700" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">生成 DAG: phases · tasks · depends_on</text>
+
+  <!-- M4 → M6 -->
+  <line x1="490" y1="712" x2="490" y2="755" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- ===== M6 | Route B 详细 ===== -->
+  <text x="490" y="775" text-anchor="middle" font-size="12" fill="#ef4444" font-weight="700" font-family="sans-serif">▼ Route B · 组织层级委派 · 审核-打回-升级闭环 ▼</text>
+
+  <!-- Worker -->
+  <use href="#g-proc" x="490" y="790"/>
+  <text x="490" y="786" text-anchor="middle" font-size="13" fill="#34d399" font-weight="700" font-family="sans-serif">🧑‍💻 Worker 执行任务</text>
+  <text x="490" y="802" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">M5 上下文组装 + agent_chat → 产出 artifacts</text>
+
+  <line x1="490" y1="814" x2="490" y2="842" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- Collect -->
+  <use href="#g-proc" x="490" y="845"/>
+  <text x="490" y="841" text-anchor="middle" font-size="12" fill="#38bdf8" font-weight="600" font-family="sans-serif">📥 收集产物 (m6_collect)</text>
+  <text x="490" y="857" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">汇总本级所有 Worker 输出</text>
+
+  <line x1="490" y1="869" x2="490" y2="895" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- Reviewer -->
+  <use href="#g-proc" x="490" y="898"/>
+  <text x="490" y="894" text-anchor="middle" font-size="12" fill="#f59e0b" font-weight="700" font-family="sans-serif">🔍 Reviewer 审核</text>
+  <text x="490" y="910" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">find_reviewer_for_level() · LCA 算法</text>
+
+  <line x1="490" y1="922" x2="490" y2="948" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- Review decision -->
+  <use href="#g-decision" x="490" y="1001"/>
+  <text x="490" y="993" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="700" font-family="sans-serif">审核决策</text>
+  <text x="490" y="1009" text-anchor="middle" font-size="9" fill="#fbbf24" font-family="sans-serif">通过 / 打回 / 升级</text>
+
+  <!-- ✅ 通过 → 下 -->
+  <line x1="490" y1="1051" x2="490" y2="1088" stroke="#34d399" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="505" y="1072" font-size="10" fill="#34d399" font-family="sans-serif">✅ 通过 → 上级/M7</text>
+
+  <!-- ❌ 打回 → 左 → 回 Worker -->
+  <line x1="395" y1="1001" x2="150" y2="1001" stroke="#f59e0b" stroke-width="2" marker-end="url(#ao)"/>
+  <text x="273" y="992" text-anchor="middle" font-size="10" fill="#f59e0b" font-family="sans-serif">❌ 打回</text>
+
+  <path d="M150,1001 L150,820 L375,820" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ao)"/>
+  <rect x="110" y="880" width="135" height="30" rx="6" fill="rgba(245,158,11,0.06)" stroke="rgba(245,158,11,0.18)" stroke-width="1"/>
+  <text x="177" y="894" text-anchor="middle" font-size="9" fill="#f59e0b" font-weight="700" font-family="sans-serif">↻ retry_feedback</text>
+  <text x="177" y="905" text-anchor="middle" font-size="8" fill="#d97706" font-family="sans-serif">修正重试 · ≤3 次</text>
+
+  <!-- ⏸ 升级 → 右 → 上级/ HITL -->
+  <line x1="585" y1="1001" x2="810" y2="1001" stroke="#a78bfa" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+  <text x="698" y="992" text-anchor="middle" font-size="10" fill="#a78bfa" font-family="sans-serif">⏸ 无法裁决</text>
+
+  <use href="#g-hitl-sm" x="810" y="983"/>
+  <text x="810" y="979" text-anchor="middle" font-size="10" fill="#c084fc" font-weight="600" font-family="sans-serif">⬆ 上级 Reviewer</text>
+  <text x="810" y="994" text-anchor="middle" font-size="8" fill="#a78bfa" font-family="sans-serif">find_escalation_target()</text>
+
+  <path d="M810,965 L810,940 L590,940" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+  <text x="700" y="934" font-size="8" fill="#a78bfa" font-family="sans-serif">↻ 上级重审</text>
+
+  <path d="M885,1001 L940,1001 L940,1060 L830,1060" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ar)"/>
+  <text x="945" y="1032" font-size="8" fill="#ef4444" font-family="sans-serif">到顶→</text>
+
+  <!-- 打回超限 → HITL -->
+  <path d="M80,1001 L60,1001 L60,1060 L110,1060" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ar)"/>
+  <text x="30" y="1032" font-size="8" fill="#ef4444" font-family="sans-serif">超限→</text>
+
+  <!-- HITL target -->
+  <use href="#g-hitl" x="250" y="1050"/>
+  <text x="250" y="1046" text-anchor="middle" font-size="12" fill="#c084fc" font-weight="700" font-family="sans-serif">⏸ HITL 人工决策</text>
+  <text x="250" y="1062" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="sans-serif">继续执行 / 放弃任务</text>
+
+  <!-- ===== M7 ===== -->
+  <line x1="490" y1="1088" x2="490" y2="1158" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+
+  <use href="#g-proc-lg" x="490" y="1161"/>
+  <text x="490" y="1153" text-anchor="middle" font-size="13" fill="#38bdf8" font-weight="700" font-family="sans-serif">M7 独立验证（盲审）</text>
+  <text x="490" y="1169" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">选非生产者 Agent · 只给需求+产物</text>
+  <text x="490" y="1183" text-anchor="middle" font-size="9" fill="#64748b" font-family="sans-serif">不给思考链 → 防确认偏差</text>
+
+  <line x1="490" y1="1189" x2="490" y2="1220" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <use href="#g-decision" x="490" y="1273"/>
+  <text x="490" y="1263" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="700" font-family="sans-serif">M7 四路路由</text>
+  <text x="490" y="1279" text-anchor="middle" font-size="9" fill="#fbbf24" font-family="sans-serif">pass / major / drift / critical</text>
+
+  <!-- ✅ passed -->
+  <line x1="395" y1="1273" x2="170" y2="1273" stroke="#34d399" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="283" y="1264" text-anchor="middle" font-size="10" fill="#34d399" font-family="sans-serif">✅ passed · 匹配需求</text>
+
+  <use href="#g-hitl" x="110" y="1257"/>
+  <text x="110" y="1253" text-anchor="middle" font-size="11" fill="#c084fc" font-weight="700" font-family="sans-serif">⏸ HITL 确认</text>
+  <text x="110" y="1269" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="sans-serif">最终审批</text>
+
+  <line x1="110" y1="1277" x2="110" y2="1320" stroke="#34d399" stroke-width="2" marker-end="url(#ag)"/>
+  <use href="#g-end" x="110" y="1338"/>
+  <text x="110" y="1334" text-anchor="middle" font-size="13" fill="#34d399" font-weight="700" font-family="sans-serif">✓ 完成</text>
+
+  <!-- 🔧 major -->
+  <line x1="435" y1="1253" x2="360" y2="1210" stroke="#f59e0b" stroke-width="2" marker-end="url(#ao)"/>
+  <text x="390" y="1225" font-size="9" fill="#f59e0b" font-family="sans-serif">🔧 major</text>
+
+  <rect x="290" y="1185" width="130" height="36" rx="8" fill="rgba(245,158,11,0.06)" stroke="rgba(245,158,11,0.2)" stroke-width="1.2"/>
+  <text x="355" y="1200" text-anchor="middle" font-size="10" fill="#f59e0b" font-weight="700" font-family="sans-serif">打回 M6 重做</text>
+  <text x="355" y="1213" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">代码Bug/缺失 · ≤3次</text>
+
+  <path d="M355,1185 L355,1145 L440,1145" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ao)"/>
+  <text x="320" y="1140" font-size="8" fill="#f59e0b" font-family="sans-serif">↻ 回 M6</text>
+
+  <!-- 🔁 drift -->
+  <line x1="545" y1="1253" x2="650" y2="1210" stroke="#f87171" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="590" y="1225" font-size="9" fill="#f87171" font-family="sans-serif">🔁 drift</text>
+
+  <rect x="650" y="1175" width="175" height="48" rx="8" fill="rgba(248,113,113,0.06)" stroke="rgba(248,113,113,0.2)" stroke-width="1.2"/>
+  <text x="737" y="1191" text-anchor="middle" font-size="10" fill="#f87171" font-weight="700" font-family="sans-serif">打回 M1 重分析</text>
+  <text x="737" y="1204" text-anchor="middle" font-size="8" fill="#fca5a5" font-family="sans-serif">清除 DAG + artifacts</text>
+  <text x="737" y="1216" text-anchor="middle" font-size="8" fill="#fca5a5" font-family="sans-serif">带验证反馈 · 完整重走管道</text>
+
+  <path d="M737,1175 L737,1130 L960,1130 L960,265 L585,265" fill="none" stroke="#f87171" stroke-width="1.5" stroke-dasharray="8,4" marker-end="url(#ar)"/>
+  <text x="965" y="620" font-size="8" fill="#f87171" font-family="sans-serif">↻</text>
+  <text x="965" y="700" font-size="8" fill="#f87171" font-family="sans-serif">完</text>
+  <text x="965" y="715" font-size="8" fill="#f87171" font-family="sans-serif">整</text>
+  <text x="965" y="730" font-size="8" fill="#f87171" font-family="sans-serif">重</text>
+  <text x="965" y="745" font-size="8" fill="#f87171" font-family="sans-serif">走</text>
+  <text x="965" y="760" font-size="8" fill="#f87171" font-family="sans-serif">M1→M7</text>
+
+  <!-- 🚨 critical -->
+  <line x1="585" y1="1273" x2="800" y2="1273" stroke="#f87171" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="693" y="1264" text-anchor="middle" font-size="10" fill="#f87171" font-family="sans-serif">🚨 critical · 严重偏离</text>
+
+  <use href="#g-hitl" x="800" y="1255"/>
+  <text x="800" y="1251" text-anchor="middle" font-size="12" fill="#c084fc" font-weight="700" font-family="sans-serif">⏸ HITL 升级</text>
+  <text x="800" y="1267" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="sans-serif">人工决策: 继续/放弃</text>
+
+  <!-- ===== 图例 ===== -->
+  <g transform="translate(135, 1580)">
+    <polygon points="8,-5 16,3 8,11 0,3" fill="url(#gDec)" stroke="#f59e0b" stroke-width="1.2"/><text x="24" y="7" font-size="10" fill="#94a3b8" font-family="sans-serif">决策节点</text>
+    <rect x="100" y="-4" width="14" height="10" rx="3" fill="url(#gHitl)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,2"/><text x="122" y="7" font-size="10" fill="#94a3b8" font-family="sans-serif">HITL 暂停</text>
+    <line x1="210" y1="3" x2="240" y2="3" stroke="#34d399" stroke-width="2"/><text x="245" y="7" font-size="10" fill="#94a3b8" font-family="sans-serif">通过</text>
+    <line x1="295" y1="3" x2="325" y2="3" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3"/><text x="330" y="7" font-size="10" fill="#94a3b8" font-family="sans-serif">打回/回路</text>
+    <line x1="405" y1="3" x2="435" y2="3" stroke="#f87171" stroke-width="1.5" stroke-dasharray="8,4"/><text x="440" y="7" font-size="10" fill="#94a3b8" font-family="sans-serif">drift 纠正</text>
+    <rect x="520" y="-4" width="14" height="10" rx="3" fill="url(#gPro)" stroke="#334155" stroke-width="1"/><text x="542" y="7" font-size="10" fill="#94a3b8" font-family="sans-serif">处理节点</text>
+    <rect x="620" y="-4" width="14" height="10" rx="7" fill="url(#gStart)" stroke="#34d399" stroke-width="1.2"/><text x="642" y="7" font-size="10" fill="#94a3b8" font-family="sans-serif">开始/结束</text>
+  </g>
+</svg>
+</div>
+</body></html>

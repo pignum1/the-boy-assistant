@@ -1,0 +1,10 @@
+trigger:
+  keywords: ["UI原型", "页面原型", "交互原型", "mockup", "wireframe", "页面设计"]
+parameters:
+  - name: page_type
+    description: 页面类型 (list/detail/form/dashboard)
+    required: true
+  - name: framework
+    description: 框架 (html/react)
+    required: false
+    default: html

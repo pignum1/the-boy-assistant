@@ -1,0 +1,37 @@
+graph TB
+    subgraph Internet
+        User([👤 用户])
+        CDN[CDN]
+    end
+
+    subgraph VPC["VPC 10.0.0.0/16"]
+        subgraph Public["公共子网"]
+            ALB[Application Load Balancer]
+            NAT[NAT Gateway]
+        end
+        subgraph Private["私有子网"]
+            K8s[Kubernetes Cluster]
+            Pod1[Pod: API Service]
+            Pod2[Pod: Worker]
+        end
+        subgraph Data["数据子网"]
+            RDS[(RDS PostgreSQL)]
+            Redis[(ElastiCache Redis)]
+        end
+    end
+
+    User -->|HTTPS| CDN
+    CDN -->|静态资源| ALB
+    User -->|API| ALB
+    ALB --> K8s
+    K8s --> Pod1
+    K8s --> Pod2
+    Pod1 --> RDS
+    Pod1 --> Redis
+    Pod2 --> RDS
+    Pod2 --> NAT
+
+    style VPC fill:none,stroke:#333
+    style Public fill:rgba(16,185,129,0.1),stroke:rgba(16,185,129,0.3)
+    style Private fill:rgba(59,130,246,0.1),stroke:rgba(59,130,246,0.3)
+    style Data fill:rgba(139,92,246,0.1),stroke:rgba(139,92,246,0.3)

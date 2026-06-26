@@ -1,0 +1,9 @@
+trigger:
+  keywords: ["时序图", "交互流程", "API调用链", "调用序列", "消息流", "认证流程"]
+parameters:
+  - name: participants
+    description: 参与者列表
+    required: false
+  - name: protocol
+    description: 协议类型 (http/grpc/mq)
+    required: false

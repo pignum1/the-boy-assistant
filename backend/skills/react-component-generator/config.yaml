@@ -1,0 +1,6 @@
+trigger:
+  keywords: ["React组件", "tsx", "组件生成", "前端组件", "React模板"]
+parameters:
+  - name: component_type
+    description: 组件类型 (functional/form/list/page)
+    required: true

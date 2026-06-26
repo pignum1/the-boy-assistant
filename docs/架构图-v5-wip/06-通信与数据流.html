@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图6: 通信与数据流 — The Boy Assistant v5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',Roboto,sans-serif;background:#0f0f1a;color:#e0e0e0;padding:24px}
+.container{max-width:1100px;margin:0 auto}
+h1{text-align:center;font-size:22px;margin-bottom:4px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:28px;font-size:13px}
+.section{background:#111827;border-radius:14px;padding:24px;border:1px solid rgba(255,255,255,.06);margin-bottom:24px}
+.section h2{font-size:15px;color:#888;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+
+/* ===== 图A: WS消息流 ===== */
+.msg-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.msg-group{background:rgba(255,255,255,.02);border-radius:10px;padding:14px 16px;border:1px solid rgba(255,255,255,.06)}
+.msg-group .mg-title{font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.msg-tags{display:flex;flex-wrap:wrap;gap:4px}
+.msg-tag{padding:3px 10px;border-radius:8px;font-size:10px;font-weight:500;border:1px solid rgba(255,255,255,.06)}
+.mt-down{background:rgba(79,195,247,.06);border-color:rgba(79,195,247,.15);color:#4fc3f7}
+.mt-up{background:rgba(255,183,77,.06);border-color:rgba(255,183,77,.15);color:#ffb74d}
+.mt-ctrl{background:rgba(206,147,216,.06);border-color:rgba(206,147,216,.15);color:#ce93d8}
+
+/* ===== 图B: Observer 事件 ===== */
+.event-grid{display:flex;gap:8px;flex-wrap:wrap}
+.event-card{flex:1;min-width:140px;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.06);text-align:center}
+.event-card .ev-icon{font-size:18px;margin-bottom:4px}
+.event-card .ev-name{font-size:10px;font-weight:600;margin-bottom:4px}
+.event-card .ev-count{font-size:9px;color:#666}
+.ev-life{background:rgba(129,199,132,.04);border-color:rgba(129,199,132,.12)}.ev-life .ev-name{color:#81c784}
+.ev-agent{background:rgba(79,195,247,.04);border-color:rgba(79,195,247,.12)}.ev-agent .ev-name{color:#4fc3f7}
+.ev-task{background:rgba(255,183,77,.04);border-color:rgba(255,183,77,.12)}.ev-task .ev-name{color:#ffb74d}
+.ev-hitl{background:rgba(206,147,216,.04);border-color:rgba(206,147,216,.12)}.ev-hitl .ev-name{color:#ce93d8}
+.ev-err{background:rgba(239,83,80,.04);border-color:rgba(239,83,80,.12)}.ev-err .ev-name{color:#ef5350}
+
+/* ===== 图C: 状态管理 ===== */
+.state-flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center}
+.state-card{padding:12px 18px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.08)}
+.state-card .sc-icon{font-size:20px;margin-bottom:4px}
+.state-card .sc-name{font-size:12px;font-weight:600;margin-bottom:2px}
+.state-card .sc-desc{font-size:10px;color:#999}
+.sc-ws{background:rgba(79,195,247,.04);border-color:rgba(79,195,247,.12)}.sc-ws .sc-name{color:#4fc3f7}
+.sc-reduce{background:rgba(239,83,80,.04);border-color:rgba(239,83,80,.12)}.sc-reduce .sc-name{color:#ef5350}
+.sc-state{background:rgba(129,199,132,.04);border-color:rgba(129,199,132,.12)}.sc-state .sc-name{color:#81c784}
+.sc-ui{background:rgba(206,147,216,.04);border-color:rgba(206,147,216,.12)}.sc-ui .sc-name{color:#ce93d8}
+.state-arrow{color:#555;font-size:16px}
+
+/* ===== 图D: 数据持久化 ===== */
+.data-row{display:flex;gap:12px;flex-wrap:wrap}
+.data-card{flex:1;min-width:200px;padding:14px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
+.data-card .dc-icon{font-size:20px;margin-bottom:6px}
+.data-card .dc-name{font-size:13px;font-weight:600;margin-bottom:6px}
+.data-card .dc-body{font-size:10px;color:#999;line-height:1.55}
+.dc-pg{background:rgba(79,195,247,.04);border-color:rgba(79,195,247,.12)}.dc-pg .dc-name{color:#4fc3f7}
+.dc-redis{background:rgba(239,83,80,.04);border-color:rgba(239,83,80,.12)}.dc-redis .dc-name{color:#ef5350}
+.dc-mem{background:rgba(129,199,132,.04);border-color:rgba(129,199,132,.12)}.dc-mem .dc-name{color:#81c784}
+.dc-file{background:rgba(255,183,77,.04);border-color:rgba(255,183,77,.12)}.dc-file .dc-name{color:#ffb74d}
+
+/* detail */
+.panel{display:none;background:#1e1e2e;border-radius:12px;padding:22px;margin-bottom:24px;border:1px solid #333}
+.panel.on{display:block}
+.panel .close{float:right;cursor:pointer;color:#888;font-size:18px;background:none;border:none}.panel .close:hover{color:#fff}
+.panel h3{font-size:16px;margin-bottom:6px}
+.panel .content{margin-top:8px;font-size:12px;color:#ccc;line-height:1.7}
+.panel .content b{color:#e0e0e0}
+.tag{padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;margin-right:4px}
+.tag.p0{background:#ff475720;color:#ff4757;border:1px solid #ff475740}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📡 通信与数据流</h1>
+<p class="subtitle">WebSocket 多路复用 · Observer 事件总线 · 前端状态管理 · 数据持久化</p>
+
+<!-- ===== 图A: WebSocket 消息分类 ===== -->
+<div class="section">
+  <h2>🔌 WebSocket 单连接 — 10+ 消息类型多路复用 (ws.py)</h2>
+  <div class="msg-grid">
+    <div class="msg-group">
+      <div class="mg-title">📥 服务端 → 客户端</div>
+      <div class="msg-tags">
+        <span class="msg-tag mt-down">agent_message</span>
+        <span class="msg-tag mt-down">stream_token</span>
+        <span class="msg-tag mt-down">hitl_notification</span>
+        <span class="msg-tag mt-down">task_status</span>
+        <span class="msg-tag mt-down">task_dag</span>
+        <span class="msg-tag mt-down">files_changed</span>
+        <span class="msg-tag mt-down">reasoning_complete</span>
+        <span class="msg-tag mt-down">thinking_update</span>
+        <span class="msg-tag mt-down">message_complete</span>
+        <span class="msg-tag mt-down">error</span>
+      </div>
+    </div>
+    <div class="msg-group">
+      <div class="mg-title">📤 客户端 → 服务端</div>
+      <div class="msg-tags">
+        <span class="msg-tag mt-up">chat</span>
+        <span class="msg-tag mt-up">hitl_resume</span>
+        <span class="msg-tag mt-up">interrupt</span>
+      </div>
+    </div>
+    <div class="msg-group" style="grid-column:1/-1">
+      <div class="mg-title">🔄 连接管理</div>
+      <div class="msg-tags">
+        <span class="msg-tag mt-ctrl">Vite Proxy 转发 /ws/*</span>
+        <span class="msg-tag mt-ctrl">useWsEvents 心跳 + 自动重连</span>
+        <span class="msg-tag mt-ctrl">三模式共用同一 WebSocket 连接</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 图B: Observer 事件 ===== -->
+<div class="section">
+  <h2>👁️ Observer 事件总线 — 15 种 EventType (observer/)</h2>
+  <div class="event-grid">
+    <div class="event-card ev-life" onclick="show('el')">
+      <div class="ev-icon">🟢</div><div class="ev-name">生命周期</div><div class="ev-count">SESSION_STARTED<br/>SESSION_ENDED</div>
+    </div>
+    <div class="event-card ev-agent" onclick="show('ea')">
+      <div class="ev-icon">🤖</div><div class="ev-name">Agent 执行</div><div class="ev-count">AE_STARTED<br/>AE_COMPLETED</div>
+    </div>
+    <div class="event-card ev-task" onclick="show('et')">
+      <div class="ev-icon">📋</div><div class="ev-name">任务</div><div class="ev-count">TASK_CREATED<br/>TASK_COMPLETED<br/>TASK_FAILED</div>
+    </div>
+    <div class="event-card ev-hitl" onclick="show('eh')">
+      <div class="ev-icon">⏸</div><div class="ev-name">HITL</div><div class="ev-count">HITL_REQUESTED<br/>HITL_RESUMED</div>
+    </div>
+    <div class="event-card ev-life" onclick="show('ev')">
+      <div class="ev-icon">✅</div><div class="ev-name">验证</div><div class="ev-count">VERIFICATION<br/>_PASSED / _FAILED</div>
+    </div>
+    <div class="event-card ev-err" onclick="show('ee')">
+      <div class="ev-icon">⚠️</div><div class="ev-name">错误 & 其他</div><div class="ev-count">ERROR_OCCURRED<br/>FILES_CHANGED<br/>MEMORY_INJECTED<br/>TOKEN_BUDGET_EXCEEDED</div>
+    </div>
+  </div>
+  <div style="margin-top:14px;font-size:10px;color:#666;text-align:center">
+    EventBus: asyncio.create_task 非阻塞发射 · 独立 DB session 持久化 · JSONB payload · 异常不传播
+  </div>
+</div>
+
+<!-- ===== 图C: 前端状态流 ===== -->
+<div class="section">
+  <h2>🔄 前端状态管理 — WS 事件 → Reducer → UI</h2>
+  <div class="state-flow">
+    <div class="state-card sc-ws">
+      <div class="sc-icon">📡</div><div class="sc-name">WebSocket 事件</div><div class="sc-desc">10+ 消息类型</div>
+    </div>
+    <div class="state-arrow">→</div>
+    <div class="state-card sc-reduce">
+      <div class="sc-icon">⚙️</div><div class="sc-name">chatRoomReducer</div><div class="sc-desc">纯函数 (state, action) → state<br/>WS_* / UI_* / CTRL_*</div>
+    </div>
+    <div class="state-arrow">→</div>
+    <div class="state-card sc-state">
+      <div class="sc-icon">📦</div><div class="sc-name">ChatRoomState</div><div class="sc-desc">messages · workPlan · artifacts<br/>thinkingAgents · pendingHitl<br/>openDrawers · executionState</div>
+    </div>
+    <div class="state-arrow">→</div>
+    <div class="state-card sc-ui">
+      <div class="sc-icon">🖥️</div><div class="sc-name">UI 组件树</div><div class="sc-desc">ChatStream · DrawerHost<br/>HITLCard · ThinkingIndicator<br/>ChatInput</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 图D: 数据持久化 ===== -->
+<div class="section">
+  <h2>🗄️ 数据持久化分层</h2>
+  <div class="data-row">
+    <div class="data-card dc-pg" onclick="show('pg')">
+      <div class="dc-icon">🗄️</div><div class="dc-name">PostgreSQL 16</div>
+      <div class="dc-body">asyncpg 异步驱动<br/>JSONB: workflow config<br/>UUID 主键 + TIMESTAMPTZ<br/>pgvector: 向量检索<br/><br/>存储: Team · Agent · Session<br/>Memory · Workflow · SOP</div>
+    </div>
+    <div class="data-card dc-redis" onclick="show('rd')">
+      <div class="dc-icon">⚡</div><div class="dc-name">Redis 7</div>
+      <div class="dc-body">会话状态缓存<br/>Blackboard Pub/Sub<br/>速率限制计数器<br/>语义缓存<br/><br/>跨团队事件广播<br/>限流滑动窗口数据</div>
+    </div>
+    <div class="data-card dc-mem" onclick="show('mm')">
+      <div class="dc-icon">💾</div><div class="dc-name">Memory 四层</div>
+      <div class="dc-body">L1: LLM 窗口 (临时)<br/>L2: Session (PG)<br/>L3: Team (PG · 30天)<br/>L4: Project (Redis · 永久)<br/><br/>Token 预算: 1M/session<br/>优先级裁剪</div>
+    </div>
+    <div class="data-card dc-file" onclick="show('ws')">
+      <div class="dc-icon">📂</div><div class="dc-name">Workspace 文件</div>
+      <div class="dc-body">{BASE}/{session_id}/<br/>按 Session 隔离<br/>Snapshot 快照管理<br/>FileProxy 代理访问<br/><br/>Agent 代码块提取 →<br/>workspace 写入</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="panel"><button class="close" onclick="closePanel()">✕</button><h3 id="pt"></h3><div style="margin:6px 0" id="ptags"></div><div class="content" id="pc"></div></div>
+</div>
+
+<script>
+const D={
+el:{t:'生命周期事件',tags:['P1'],c:'SESSION_STARTED: 会话创建<br>SESSION_ENDED: 会话结束·触发Harness.cleanup'},
+ea:{t:'Agent 执行事件',tags:['P0'],c:'AGENT_EXECUTION_STARTED: Harness.before 发射<br>AGENT_EXECUTION_COMPLETED: Harness.after 发射<br>包含 session_id·agent_id·model·latency·tokens'},
+et:{t:'任务事件',tags:['P1'],c:'TASK_CREATED: M4分解生成<br>TASK_COMPLETED: Worker 执行完成<br>TASK_FAILED: 执行失败(含error信息)'},
+eh:{t:'HITL 事件',tags:['P0'],c:'HITL_REQUESTED: 触发人工介入·含options<br>HITL_RESUMED: 用户回复后恢复执行'},
+ev:{t:'验证事件',tags:['P1'],c:'VERIFICATION_PASSED: M7通过<br>VERIFICATION_FAILED: M7未通过·含severity'},
+ee:{t:'错误事件',tags:['P1'],c:'ERROR_OCCURRED: 系统错误<br>FILES_CHANGED: 产物文件变更<br>MEMORY_INJECTED: 记忆注入<br>TOKEN_BUDGET_EXCEEDED: Token超限'},
+pg:{t:'PostgreSQL 16',tags:['P0'],c:'asyncpg异步·JSONB(workflow config)·UUID主键·TIMESTAMPTZ<br>核心表: teams·agents·sessions·memories·workflows·workflow_nodes·workflow_edges·team_members·team_supervisor_configs/relations·team_langgraph_configs'},
+rd:{t:'Redis 7',tags:['P1'],c:'会话状态缓存·Blackboard Pub/Sub(跨团队事件广播)·速率限制计数器(滑动窗口)·语义缓存<br>单例连接池管理'},
+mm:{t:'Memory 四层',tags:['P0'],c:'L1 Context Window: LLM原生·单次请求<br>L2 Session: PostgreSQL·会话期间·对话历史+决策<br>L3 Team: PostgreSQL·30天·团队共享知识<br>L4 Project: Redis·永久·技术规范+架构模式<br><br>Token裁剪: System>当前任务>前置产物>PeerMsg>记忆>历史'},
+ws:{t:'Workspace 文件',tags:['P1'],c:'隔离: {WORKSPACE_BASE}/{session_id}/<br>文件提取: Harness._extract_files() 正则解析代码块<br>安全: 路径越权检测(startswith)<br>快照: 关键节点自动Snapshot·支持回滚<br>前端: ArtifactsDrawer 按Agent分组·点击预览'},
+};
+function show(k){const d=D[k];if(!d)return;const p=document.getElementById('panel');document.getElementById('pt').textContent=d.t;document.getElementById('ptags').innerHTML=(d.tags||[]).map(t=>'<span class="tag p0">'+t+'</span>').join('');document.getElementById('pc').innerHTML=d.c;p.classList.add('on');p.scrollIntoView({behavior:'smooth'})}
+function closePanel(){document.getElementById('panel').classList.remove('on')}
+</script>
+</body></html>

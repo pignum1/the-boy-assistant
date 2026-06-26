@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Boy Assistant - 系统架构图</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        /* ===== 架构图主容器 ===== */
+        .arch-container {
+            display: flex;
+            gap: 0;
+            margin-bottom: 40px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+
+        /* ===== 左侧层级栏 ===== */
+        .layers-bar {
+            width: 80px;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .layer-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            writing-mode: vertical-lr;
+            text-orientation: mixed;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            padding: 10px 0;
+            border-right: 1px solid rgba(255,255,255,0.08);
+        }
+        .layer-label.l1 { background: #1a1a2e; color: #4fc3f7; height: 100px; }
+        .layer-label.l2 { background: #16213e; color: #81c784; height: 120px; }
+        .layer-label.l3 { background: #0f3460; color: #fff176; height: 110px; }
+        .layer-label.l4 { background: #1a1a2e; color: #ff8a65; height: 130px; }
+        .layer-label.harness { background: #2d1b3d; color: #ce93d8; height: 100px; }
+        .layer-label.model { background: #1a1a2e; color: #ef5350; height: 80px; }
+
+        /* ===== 右侧主内容 ===== */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ===== 每行 ===== */
+        .arch-row {
+            display: flex;
+            position: relative;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .arch-row:last-child { border-bottom: none; }
+
+        /* ===== 模块卡片 ===== */
+        .module-card {
+            flex: 1;
+            padding: 12px 14px;
+            border-right: 1px solid rgba(255,255,255,0.06);
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .module-card:last-child { border-right: none; }
+        .module-card:hover {
+            background: rgba(255,255,255,0.04);
+            transform: translateY(-1px);
+        }
+        .module-card .icon { font-size: 18px; margin-bottom: 4px; }
+        .module-card .name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+        .module-card .desc { font-size: 10px; color: #999; line-height: 1.3; }
+
+        /* L1 - 能力层 */
+        .row-l1 { background: #1a1a2e; min-height: 100px; }
+        .row-l1 .module-card { border-right-color: rgba(79,195,247,0.1); }
+
+        /* L2 - 反思层 */
+        .row-l2 { background: #16213e; min-height: 120px; }
+        .row-l2 .module-card { border-right-color: rgba(129,199,132,0.1); }
+
+        /* L3 - 策略层 */
+        .row-l3 { background: #0f3460; min-height: 110px; }
+        .row-l3 .module-card { border-right-color: rgba(255,241,118,0.1); }
+
+        /* L4 - 编排层 */
+        .row-l4 { background: #1a1a2e; min-height: 130px; }
+        .row-l4 .module-card { border-right-color: rgba(255,138,101,0.1); }
+
+        /* Harness - 保障层 */
+        .row-harness { background: #2d1b3d; min-height: 100px; }
+        .row-harness .module-card { border-right-color: rgba(206,147,216,0.1); }
+
+        /* Model - 底层引擎 */
+        .row-model { background: #1a1a2e; min-height: 80px; }
+        .row-model .module-card { border-right-color: rgba(239,83,80,0.1); }
+
+        /* ===== 右键菜单（模拟面板） ===== */
+        .detail-panel {
+            display: none;
+            background: #1e1e2e;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid #333;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        .detail-panel.active { display: block; }
+        .detail-panel .close {
+            float: right;
+            cursor: pointer;
+            color: #888;
+            font-size: 18px;
+        }
+        .detail-panel .close:hover { color: #fff; }
+        .detail-panel h3 { font-size: 18px; margin-bottom: 8px; }
+        .detail-panel .tag {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-right: 6px;
+            margin-bottom: 6px;
+        }
+        .detail-panel .tag.p0 { background: #ff4757; color: #fff; }
+        .detail-panel .tag.p1 { background: #ffa502; color: #fff; }
+        .detail-panel .tag.p2 { background: #2ed573; color: #fff; }
+        .detail-panel ul { margin-top: 10px; padding-left: 20px; }
+        .detail-panel li { font-size: 13px; margin-bottom: 4px; color: #ccc; }
+
+        /* ===== 依赖关系图 ===== */
+        .deps-container {
+            background: #1a1a2e;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .deps-container h2 { font-size: 18px; margin-bottom: 20px; color: #ccc; }
+        .dep-chain {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .dep-item {
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .dep-item.model { background: #2a1a1a; color: #ef5350; }
+        .dep-item.persona { background: #1a2a1a; color: #66bb6a; }
+        .dep-item.tool { background: #1a1a2a; color: #42a5f5; }
+        .dep-item.agent { background: #2a1a2a; color: #ab47bc; }
+        .dep-item.skill { background: #2a2a1a; color: #ffee58; }
+        .dep-item.team { background: #1a2a2a; color: #26a69a; }
+        .dep-arrow { color: #555; font-size: 20px; }
+
+        /* ===== 流程说明 ===== */
+        .flow-container {
+            background: #1a1a2e;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .flow-container h2 { font-size: 18px; margin-bottom: 20px; color: #ccc; }
+        .flow-steps {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .flow-step {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            background: #2a2a3e;
+            color: #ccc;
+        }
+        .flow-step.active { background: #4a2a6e; color: #ce93d8; }
+        .flow-arrow { color: #555; font-size: 14px; }
+
+        /* ===== 面试考点标签 ===== */
+        .interview-points {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 15px;
+        }
+        .interview-point {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            background: rgba(102,126,234,0.15);
+            color: #667eea;
+            border: 1px solid rgba(102,126,234,0.3);
+        }
+
+        @media (max-width: 900px) {
+            .layers-bar { width: 50px; }
+            .layer-label { font-size: 10px; }
+            .module-card { padding: 8px 10px; }
+            .module-card .name { font-size: 11px; }
+            .module-card .desc { display: none; }
+            .dep-chain { gap: 4px; }
+            .dep-item { padding: 6px 12px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🏗️ The Boy Assistant — 系统架构全景图</h1>
+    <p class="subtitle">四层架构 + Harness 横切保障层 · 点击模块查看详情</p>
+
+    <!-- ===== 架构图 ===== -->
+    <div class="arch-container">
+        <!-- 左侧层级栏 -->
+        <div class="layers-bar">
+            <div class="layer-label l4">L4 编排层</div>
+            <div class="layer-label l3">L3 策略层</div>
+            <div class="layer-label l2">L2 反思层</div>
+            <div class="layer-label l1">L1 能力层</div>
+            <div class="layer-label harness">Harness 保障</div>
+            <div class="layer-label model">底层引擎</div>
+        </div>
+
+        <!-- 右侧内容 -->
+        <div class="main-content">
+            <!-- L4 编排层 -->
+            <div class="arch-row row-l4">
+                <div class="module-card" data-module="team-manager">
+                    <div class="icon">👥</div>
+                    <div class="name">Team Manager</div>
+                    <div class="desc">团队模板、实例管理、角色插槽</div>
+                </div>
+                <div class="module-card" data-module="sop-engine">
+                    <div class="icon">📋</div>
+                    <div class="name">SOP Engine</div>
+                    <div class="desc">StateGraph、节点执行、条件路由</div>
+                </div>
+                <div class="module-card" data-module="scheduler">
+                    <div class="icon">⚡</div>
+                    <div class="name">Scheduler</div>
+                    <div class="desc">优先级队列、并发控制、API限流</div>
+                </div>
+                <div class="module-card" data-module="session-manager">
+                    <div class="icon">🔒</div>
+                    <div class="name">Session Manager</div>
+                    <div class="desc">Agent绑定、会话隔离、资源回收</div>
+                </div>
+                <div class="module-card" data-module="agent-pool">
+                    <div class="icon">🏊</div>
+                    <div class="name">Agent Pool</div>
+                    <div class="desc">注册发现、能力匹配、状态管理</div>
+                </div>
+                <div class="module-card" data-module="blackboard">
+                    <div class="icon">📢</div>
+                    <div class="name">Blackboard</div>
+                    <div class="desc">团队通信、事件广播、状态共享</div>
+                </div>
+            </div>
+
+            <!-- L3 策略层 -->
+            <div class="arch-row row-l3">
+                <div class="module-card" data-module="skill-registry">
+                    <div class="icon">📁</div>
+                    <div class="name">Skill Registry</div>
+                    <div class="desc">Skill文件注册、SKILL.md解析</div>
+                </div>
+                <div class="module-card" data-module="inference-strategy">
+                    <div class="icon">🧠</div>
+                    <div class="name">推理策略</div>
+                    <div class="desc">Model Router、成本优化策略</div>
+                </div>
+                <div class="module-card" data-module="prompt-templates">
+                    <div class="icon">📝</div>
+                    <div class="name">提示词模板</div>
+                    <div class="desc">Prompt组装、动态注入</div>
+                </div>
+                <div class="module-card" data-module="condition-router">
+                    <div class="icon">🔀</div>
+                    <div class="name">条件路由</div>
+                    <div class="desc">表达式求值、分支选择</div>
+                </div>
+            </div>
+
+            <!-- L2 反思层 -->
+            <div class="arch-row row-l2">
+                <div class="module-card" data-module="memory-manager">
+                    <div class="icon">💾</div>
+                    <div class="name">Memory Manager</div>
+                    <div class="desc">四层Memory、存储检索、继承规则</div>
+                </div>
+                <div class="module-card" data-module="context-manager">
+                    <div class="icon">📚</div>
+                    <div class="name">Context Manager</div>
+                    <div class="desc">Token预算、上下文组装、压缩</div>
+                </div>
+                <div class="module-card" data-module="rag-engine">
+                    <div class="icon">🔍</div>
+                    <div class="name">RAG Engine</div>
+                    <div class="desc">混合检索、双模式、知识库层级</div>
+                </div>
+                <div class="module-card" data-module="quality-evaluator">
+                    <div class="icon">⭐</div>
+                    <div class="name">质量评估</div>
+                    <div class="desc">经验积累、协作学习</div>
+                </div>
+            </div>
+
+            <!-- L1 能力层 -->
+            <div class="arch-row row-l1">
+                <div class="module-card" data-module="model-adapter">
+                    <div class="icon">🤖</div>
+                    <div class="name">Model Adapter</div>
+                    <div class="desc">多Provider统一、Streaming、Retry</div>
+                </div>
+                <div class="module-card" data-module="persona-registry">
+                    <div class="icon">👤</div>
+                    <div class="name">Persona Registry</div>
+                    <div class="desc">角色定义、Prompt、能力声明</div>
+                </div>
+                <div class="module-card" data-module="tool-registry">
+                    <div class="icon">🔧</div>
+                    <div class="name">Tool Registry</div>
+                    <div class="desc">MCP注册、Schema、权限模型</div>
+                </div>
+                <div class="module-card" data-module="agent-factory">
+                    <div class="icon">🏭</div>
+                    <div class="name">Agent Factory</div>
+                    <div class="desc">Agent组合、Model+Persona+Tools</div>
+                </div>
+            </div>
+
+            <!-- Harness 保障层 -->
+            <div class="arch-row row-harness">
+                <div class="module-card" data-module="validation-gate">
+                    <div class="icon">🛡️</div>
+                    <div class="name">Validation Gate</div>
+                    <div class="desc">格式/事实/质量/安全四阶段</div>
+                </div>
+                <div class="module-card" data-module="feedback-loop">
+                    <div class="icon">🔄</div>
+                    <div class="name">Feedback Loop</div>
+                    <div class="desc">错误诊断、Snapshot回滚、自愈</div>
+                </div>
+                <div class="module-card" data-module="workspace-manager">
+                    <div class="icon">📂</div>
+                    <div class="name">Workspace Manager</div>
+                    <div class="desc">隔离策略、快照、文件锁</div>
+                </div>
+                <div class="module-card" data-module="hallucination-detector">
+                    <div class="icon">🔮</div>
+                    <div class="name">幻觉检测</div>
+                    <div class="desc">三层检测、置信度评分</div>
+                </div>
+                <div class="module-card" data-module="circuit-breaker">
+                    <div class="icon">⚡</div>
+                    <div class="name">Circuit Breaker</div>
+                    <div class="desc">熔断降级、分级策略</div>
+                </div>
+                <div class="module-card" data-module="observer">
+                    <div class="icon">👁️</div>
+                    <div class="name">Observer</div>
+                    <div class="desc">链路追踪、成本统计、审计</div>
+                </div>
+            </div>
+
+            <!-- 底层引擎 -->
+            <div class="arch-row row-model">
+                <div class="module-card" data-module="llm-engines">
+                    <div class="icon">🧩</div>
+                    <div class="name">LLM Engines</div>
+                    <div class="desc">GPT-4o / Claude / Gemini / GLM</div>
+                </div>
+                <div class="module-card" data-module="vector-db">
+                    <div class="icon">📊</div>
+                    <div class="name">Vector DB</div>
+                    <div class="desc">pgvector → Milvus</div>
+                </div>
+                <div class="module-card" data-module="cache">
+                    <div class="icon">⚡</div>
+                    <div class="name">Cache</div>
+                    <div class="desc">Redis / Semantic Cache</div>
+                </div>
+                <div class="module-card" data-module="storage">
+                    <div class="icon">🗄️</div>
+                    <div class="name">Storage</div>
+                    <div class="desc">PostgreSQL / Elasticsearch</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 依赖关系 ===== -->
+    <div class="deps-container">
+        <h2>📦 资源依赖链</h2>
+        <div class="dep-chain">
+            <span class="dep-item model">Model</span>
+            <span class="dep-arrow">→</span>
+            <span class="dep-item persona">Persona</span>
+            <span class="dep-arrow">+</span>
+            <span class="dep-item tool">Tool</span>
+            <span class="dep-arrow">→</span>
+            <span class="dep-item agent">Agent</span>
+            <span class="dep-arrow">→</span>
+            <span class="dep-item skill">Skill</span>
+            <span class="dep-arrow">→</span>
+            <span class="dep-item team">Team → SOP</span>
+        </div>
+        <div style="text-align:center;margin-top:15px;font-size:12px;color:#888;">
+            Agent = Model + Persona + Tools &nbsp;|&nbsp; Skill 独立文件目录 &nbsp;|&nbsp; SOP 节点绑定 Agent + Skill
+        </div>
+    </div>
+
+    <!-- ===== 核心流程 ===== -->
+    <div class="flow-container">
+        <h2>🔄 核心执行流程</h2>
+        <div class="flow-steps">
+            <span class="flow-step active">1. 注册资源</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">2. 创建团队</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">3. 定义SOP</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">4. 分配Agent</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">5. 节点执行</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">6. 验证+反馈</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">7. HITL确认</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-step">8. 任务完成</span>
+        </div>
+        <div style="margin-top:15px;font-size:12px;color:#888;">
+            💡 每个节点执行时：加载Skill → 注入Memory+RAG → Agent调用 → 验证 → 条件路由
+        </div>
+        <div class="interview-points">
+            <span class="interview-point">🏆 面试高频：SOP工作流</span>
+            <span class="interview-point">🏆 面试高频：四层Memory</span>
+            <span class="interview-point">🏆 面试高频：RAG混合检索</span>
+            <span class="interview-point">🏆 面试高频：Feedback Loop自愈</span>
+            <span class="interview-point">🏆 面试高频：Agent Pool分配</span>
+            <span class="interview-point">🏆 面试高频：HITL人机协同</span>
+            <span class="interview-point">🏆 面试高频：幻觉检测</span>
+            <span class="interview-point">🏆 面试高频：熔断降级</span>
+        </div>
+    </div>
+
+    <!-- ===== 详情面板 ===== -->
+    <div class="detail-panel" id="detailPanel">
+        <span class="close" onclick="closeDetail()">✕</span>
+        <h3 id="detailTitle">模块名称</h3>
+        <div id="detailTags"></div>
+        <p id="detailDesc" style="color:#aaa;margin-top:8px;"></p>
+        <ul id="detailPoints"></ul>
+    </div>
+</div>
+
+<script>
+    // ===== 模块详细数据 =====
+    const moduleData = {
+        "team-manager": {
+            title: "👥 Team Manager (S-01)",
+            tags: ["P0", "面试必问"],
+            desc: "团队模板管理、实例生命周期、角色插槽(Slot)定义",
+            points: [
+                "团队模板(Template) → 实例(Instance) → 花名册(Roster)",
+                "生命周期：Template → Inactive → Active → Sleeping → Teardown",
+                "角色插槽(roleSlot)：定义需要什么能力，不是固定的人",
+                "四类团队：Dev / Learn / Hobby / Career"
+            ]
+        },
+        "sop-engine": {
+            title: "📋 SOP Engine (S-02)",
+            tags: ["P0", "面试必问", "LangGraph"],
+            desc: "基于LangGraph StateGraph的工作流引擎，驱动SOP执行",
+            points: [
+                "StateGraph：nodes + edges + state 有向图模型",
+                "节点类型：start / agent / parallel / validation / hitl / loop / sub-sop",
+                "边类型：fixed(固定) / condition(条件) / loop(循环回退)",
+                "HITL断点：Breakpoint机制，暂停等待人工确认",
+                "SOP变体：full-sop / hotfix-sop / refactor-sop"
+            ]
+        },
+        "scheduler": {
+            title: "⚡ Priority Scheduler (S-03)",
+            tags: ["P1", "面试加分"],
+            desc: "优先级任务队列、并发控制、API限流(Rate Limiter)",
+            points: [
+                "三层限流：全局(TPM/RPM) → Agent级(Semaphore) → 任务级(上限)",
+                "令牌桶算法：每Provider独立令牌桶",
+                "优先级队列：P0紧急 > P1高 > P2中 > P3低",
+                "降级策略：降速 → 压缩 → 切换模型 → 暂停任务"
+            ]
+        },
+        "session-manager": {
+            title: "🔒 Agent Session Manager (S-04)",
+            tags: ["P0", "面试必问"],
+            desc: "Agent-Team绑定、Session创建/销毁、资源隔离",
+            points: [
+                "Session隔离维度：上下文/Memory/Workspace/工具实例",
+                "有状态工具GC：Terminal/Docker生命周期绑定Session",
+                "Agent独占：同一时刻一个Agent最多归属一个Team",
+                "资源回收：Session销毁时自动清理所有关联资源"
+            ]
+        },
+        "agent-pool": {
+            title: "🏊 Agent Pool (S-05)",
+            tags: ["P1", "面试加分"],
+            desc: "Agent注册/发现、能力匹配、状态管理(idle/busy/error)",
+            points: [
+                "匹配策略：capability匹配(requiredCapabilities ∩ Agent能力)",
+                "分配流程：匹配 → 分配 → 创建Session → 执行 → 回收",
+                "状态管理：idle(空闲) / busy(执行中) / error(异常)",
+                "跨团队调配：同一Agent可加入多个团队"
+            ]
+        },
+        "blackboard": {
+            title: "📢 Blackboard (S-06)",
+            tags: ["P2", "架构亮点"],
+            desc: "团队内共享状态、跨团队通信、事件广播(Pub/Sub)",
+            points: [
+                "消息类型：task-update / cross-team-request / hitl-notification",
+                "团队内：同一Team的Agent共享任务状态",
+                "跨团队：Team A可向Team B发起协作请求",
+                "基于Redis Pub/Sub实现事件总线"
+            ]
+        },
+        "skill-registry": {
+            title: "📁 Skill Registry (L3)",
+            tags: ["P0", "面试必问"],
+            desc: "Skill文件目录注册与管理，Skill = 自包含目录",
+            points: [
+                "目录结构：SKILL.md + config.yaml + templates/",
+                "SKILL.md：name + description + instructions + output_format",
+                "config.yaml：trigger条件 + 参数定义",
+                "Agent与Skill解耦：SOP节点中按需加载"
+            ]
+        },
+        "inference-strategy": {
+            title: "🧠 推理策略 (L3)",
+            tags: ["P1", "面试加分"],
+            desc: "Model Router、成本优化策略",
+            points: [
+                "Model Router：简单→轻量模型, 复杂→强模型",
+                "重试升级：失败时自动升级到更强模型",
+                "Fallback链：主模型→备用模型→降级模型"
+            ]
+        },
+        "prompt-templates": {
+            title: "📝 提示词模板 (L3)",
+            tags: ["P0", "面试必问"],
+            desc: "Prompt组装公式、动态注入策略",
+            points: [
+                "组装公式：System + RAG + Memory + TaskState + Skill",
+                "动态注入：运行时根据上下文组装",
+                "版本管理：Prompt变更历史、A/B测试"
+            ]
+        },
+        "condition-router": {
+            title: "🔀 条件路由 (L3)",
+            tags: ["P1", "面试加分"],
+            desc: "条件表达式求值、分支选择",
+            points: [
+                "支持表达式：approved/rejected/passed/failed",
+                "循环回退：max_loop限制，防止死循环",
+                "条件分支：根据结果自动选择下一节点"
+            ]
+        },
+        "memory-manager": {
+            title: "💾 Memory Manager (L2)",
+            tags: ["P0", "面试必问"],
+            desc: "四层Memory架构：L1系统 / L2团队 / L3全局 / L4上下文",
+            points: [
+                "L1: 所有团队共享的通用知识",
+                "L2: 团队级共享，Leader决策自动写入",
+                "L3: 跟随Agent跨团队，个人经验",
+                "L4: Agent在特定团队的上下文",
+                "继承规则：Agent实际可见 = L1 + L2 + L3 + L4",
+                "Token预算：32000 Token，超限自动压缩裁剪"
+            ]
+        },
+        "context-manager": {
+            title: "📚 Context Manager (H-01)",
+            tags: ["P0", "面试必问"],
+            desc: "按Team隔离的上下文管理、Token预算、RAG注入",
+            points: [
+                "Token预算计算：Memory + RAG + TaskState 分配",
+                "压缩策略：摘要压缩(70%触发) + 裁剪(90%触发)",
+                "双模式检索：RAG语义 + AST代码符号"
+            ]
+        },
+        "rag-engine": {
+            title: "🔍 RAG Engine (L2)",
+            tags: ["P0", "面试必问"],
+            desc: "混合检索 + 重排序 + 知识库层级",
+            points: [
+                "混合检索：Dense(pgvector) + Sparse(BM25)",
+                "Reranker：bge-reranker-v2-m3 Cross-Encoder精排",
+                "知识库层级：Agent专属 > 团队公共 > 全局",
+                "Chunking策略：语义分块(512token) + overlap(64)",
+                "检索优先级：AST精确 → RAG语义 → 未命中"
+            ]
+        },
+        "quality-evaluator": {
+            title: "⭐ 质量评估 (L2)",
+            tags: ["P2", "架构亮点"],
+            desc: "经验积累、协作学习、质量评估",
+            points: [
+                "经验积累：成功/失败模式记录",
+                "协作学习：Agent间经验共享",
+                "质量评估：LLM-as-Judge多维度评分"
+            ]
+        },
+        "model-adapter": {
+            title: "🤖 Model Adapter (E-01)",
+            tags: ["P0", "面试必问"],
+            desc: "统一LLM API抽象、多Provider适配",
+            points: [
+                "适配器模式：OpenAI/Claude/Gemini/GLM统一接口",
+                "Streaming支持：SSE流式输出",
+                "Retry策略：指数退避(1s→2s→4s)，最多3次",
+                "Fallback机制：主模型失败自动切换备用模型",
+                "LiteLLM封装：100+Provider统一调用"
+            ]
+        },
+        "persona-registry": {
+            title: "👤 Persona Registry (E-02)",
+            tags: ["P0", "面试必问"],
+            desc: "角色定义注册表，维护所有可用角色",
+            points: [
+                "核心属性：name + system_prompt + capabilities + tools_declared",
+                "能力维度：coding / analysis / creative / communication",
+                "工具声明：角色需要哪些工具(含权限readonly)",
+                "输出偏好：风格、语言、格式偏好"
+            ]
+        },
+        "tool-registry": {
+            title: "🔧 Tool Registry (E-03)",
+            tags: ["P0", "面试必问"],
+            desc: "MCP Server注册、Function Schema、三层权限模型",
+            points: [
+                "三层配置：Registry(注册) → Persona(声明) → Team(过滤)",
+                "运行时：实际可用 = Persona声明 ∩ Team白名单",
+                "有状态工具：Terminal/Docker，生命周期绑定Session",
+                "MCP协议：统一工具调用协议"
+            ]
+        },
+        "agent-factory": {
+            title: "🏭 Agent Factory (L1)",
+            tags: ["P0", "面试必问"],
+            desc: "Agent组合工厂：Model + Persona + Tools",
+            points: [
+                "组合公式：Agent = Default Model + Persona + Tools",
+                "默认模型 + 运行时覆盖(由编排层决定)",
+                "Agent ≠ Model：角色不绑定引擎，可切换",
+                "跨团队复用：同一Agent可加入多个团队"
+            ]
+        },
+        "validation-gate": {
+            title: "🛡️ Validation Gate (H-03)",
+            tags: ["P0", "面试必问"],
+            desc: "四阶段验证管线：格式 → 事实 → 质量 → 安全",
+            points: [
+                "格式验证：JSON Schema校验输出结构",
+                "事实核查：输出作为query反向检索知识库",
+                "质量评分：LLM-as-Judge多维度评分(完整性/准确性/可读性)",
+                "安全检查：PII检测、代码注入检测"
+            ]
+        },
+        "feedback-loop": {
+            title: "🔄 Feedback Loop (H-05)",
+            tags: ["P1", "面试加分"],
+            desc: "错误诊断 → Snapshot回滚 → 注入反馈 → 重试 → HITL升级",
+            points: [
+                "五步闭环：诊断 → 回滚 → 注入 → 重试 → 升级",
+                "Snapshot机制：Validation前自动创建，失败时恢复",
+                "maxRetries：可配置，超过后升级HITL",
+                "关键设计：失败退出时回滚，人类接手干净代码"
+            ]
+        },
+        "workspace-manager": {
+            title: "📂 Workspace Manager (H-02a)",
+            tags: ["P1", "面试加分"],
+            desc: "工作空间隔离、快照、文件锁、并行安全",
+            points: [
+                "隔离策略：shared(共享) / isolated(独立) / readonly(只读)",
+                "Parallel节点：Copy-on-Write复制，各分支独立",
+                "文件锁：RWLock，读共享写排他",
+                "Snapshot管理：git增量存储，自动清理"
+            ]
+        },
+        "hallucination-detector": {
+            title: "🔮 幻觉检测 (Harness)",
+            tags: ["P1", "面试加分"],
+            desc: "三层检测体系：实时 → 交叉验证 → 后置审计",
+            points: [
+                "L1实时：自洽性检查(3次采样) + 知识溯源",
+                "L2交叉：多模型投票 + RAG反向验证",
+                "L3后置：全链路审查 + 置信度报告",
+                "置信度公式：self_consistency×0.3 + source_coverage×0.3 + ..."
+            ]
+        },
+        "circuit-breaker": {
+            title: "⚡ Circuit Breaker (Harness)",
+            tags: ["P1", "面试加分"],
+            desc: "Per-M

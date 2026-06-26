@@ -1,0 +1,6 @@
+trigger:
+  keywords: ["PRD", "需求文档", "产品需求", "功能需求", "需求分析"]
+parameters:
+  - name: priority_level
+    description: 功能优先级 (p0/p1/p2)
+    required: false

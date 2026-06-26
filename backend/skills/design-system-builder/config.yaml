@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["设计系统", "Design Token", "组件规范", "样式指南", "设计规范"]
+parameters:
+  - name: output_format
+    description: 输出格式 (css/json/html)
+    required: false
+    default: css

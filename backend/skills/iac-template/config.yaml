@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["Terraform", "IaC", "基础设施", "云资源", "Pulumi", "Ansible"]
+parameters:
+  - name: provider
+    description: 云提供商 (aws/aliyun/tencent/gcp)
+    required: false
+    default: aws

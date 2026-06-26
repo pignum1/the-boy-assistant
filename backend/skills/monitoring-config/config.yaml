@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["监控", "Prometheus", "Grafana", "告警", "可观测", "日志采集"]
+parameters:
+  - name: tool
+    description: 工具 (prometheus/grafana/loki)
+    required: false
+    default: prometheus

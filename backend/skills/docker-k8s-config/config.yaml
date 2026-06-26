@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["Docker", "Kubernetes", "K8s", "容器化", "Dockerfile", "docker-compose"]
+parameters:
+  - name: runtime
+    description: 运行时 (python/node/go)
+    required: false
+    default: python

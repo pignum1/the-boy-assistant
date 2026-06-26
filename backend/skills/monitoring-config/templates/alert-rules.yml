@@ -1,0 +1,43 @@
+groups:
+  - name: app-alerts
+    rules:
+      # P0 - 服务不可用
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "服务 {{ $labels.job }} 宕机"
+          description: "{{ $labels.instance }} 已停止响应超过 1 分钟"
+
+      # P0 - 5xx 错误率
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "5xx 错误率超过 5%"
+
+      # P1 - P99 延迟
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "P99 延迟超过 2s"
+
+      # P1 - 内存使用
+      - alert: HighMemory
+        expr: process_resident_memory_bytes / 1024 / 1024 > 450
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "内存使用超过 450MB"
+
+      # P2 - 磁盘空间
+      - alert: DiskSpaceLow
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.2
+        for: 30m
+        labels: { severity: info }
+        annotations:
+          summary: "磁盘剩余空间不足 20%"

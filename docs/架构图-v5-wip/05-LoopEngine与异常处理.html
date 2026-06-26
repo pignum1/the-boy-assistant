@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图5: Loop Engine + 异常处理 — The Boy Assistant v5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',Roboto,sans-serif;background:#0f0f1a;color:#e0e0e0;padding:24px}
+.container{max-width:1100px;margin:0 auto}
+h1{text-align:center;font-size:22px;margin-bottom:4px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:28px;font-size:13px}
+
+.section{background:#111827;border-radius:14px;padding:24px;border:1px solid rgba(255,255,255,.06);margin-bottom:24px}
+.section h2{font-size:15px;color:#888;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:8px}
+
+/* ===== 图A: 三分类管道 ===== */
+.classify-pipe{display:flex;align-items:stretch;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.06)}
+.pipe-entry{width:120px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#251515;border-right:1px solid rgba(239,83,80,.12);font-size:12px;font-weight:600;color:#ef5350;text-align:center;padding:16px;flex-direction:column;gap:4px}
+.pipe-entry .pe-icon{font-size:24px}
+.pipe-body{flex:1;display:flex;flex-direction:column;padding:16px}
+.pipe-label{font-size:12px;font-weight:600;color:#ffb74d;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.pipe-label::before{content:'';width:12px;height:12px;background:#2a1a10;border:1.5px solid #ffa502;transform:rotate(45deg);flex-shrink:0}
+.pipe-cards{display:flex;gap:10px}
+.err-card{flex:1;padding:14px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.08);min-width:0}
+.err-card .ec-icon{font-size:20px;margin-bottom:6px}
+.err-card .ec-title{font-size:13px;font-weight:700;margin-bottom:6px}
+.err-card .ec-body{font-size:10px;color:#999;line-height:1.55}
+.err-card .ec-limit{font-size:9px;color:#666;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.04)}
+.ec-transient{background:rgba(79,195,247,.04);border-color:rgba(79,195,247,.12)}.ec-transient .ec-title{color:#4fc3f7}
+.ec-content{background:rgba(255,165,2,.04);border-color:rgba(255,165,2,.12)}.ec-content .ec-title{color:#f59e0b}
+.ec-fatal{background:rgba(239,83,80,.04);border-color:rgba(239,83,80,.12)}.ec-fatal .ec-title{color:#ef5350}
+
+/* ===== 图B: 四步恢复 ===== */
+.steps-flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
+.step{width:175px;padding:14px 10px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.08);flex-shrink:0}
+.step .sn{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;margin:0 auto 8px}
+.step .st{font-size:12px;font-weight:600;margin-bottom:3px}
+.step .sd{font-size:10px;color:#999;line-height:1.4}
+.s1{background:rgba(239,83,80,.04);border-color:rgba(239,83,80,.12)}.s1 .sn{background:rgba(239,83,80,.15);color:#ef5350}.s1 .st{color:#ef5350}
+.s2{background:rgba(255,165,2,.04);border-color:rgba(255,165,2,.12)}.s2 .sn{background:rgba(255,165,2,.15);color:#f59e0b}.s2 .st{color:#f59e0b}
+.s3{background:rgba(79,195,247,.04);border-color:rgba(79,195,247,.12)}.s3 .sn{background:rgba(79,195,247,.15);color:#4fc3f7}.s3 .st{color:#4fc3f7}
+.s4{background:rgba(129,199,132,.04);border-color:rgba(129,199,132,.12)}.s4 .sn{background:rgba(129,199,132,.15);color:#81c784}.s4 .st{color:#81c784}
+.step-arrow{color:#444;font-size:18px;flex-shrink:0}
+.step-arrow.loop{color:#f59e0b}
+
+/* ===== 图C: 升级策略 ===== */
+.esc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+.esc-node{padding:6px 14px;border-radius:8px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,.08);flex-shrink:0}
+.e1{background:rgba(129,199,132,.06);border-color:rgba(129,199,132,.15);color:#81c784}
+.e2{background:rgba(255,165,2,.06);border-color:rgba(255,165,2,.15);color:#f59e0b}
+.e3{background:rgba(239,83,80,.06);border-color:rgba(239,83,80,.15);color:#ef5350}
+.eh{background:rgba(206,147,216,.06);border-color:rgba(206,147,216,.2);color:#ce93d8;border-style:dashed}
+.esc-arrow{color:#555;font-size:13px}
+
+/* ===== 图D: drift 纠正 ===== */
+.drift-loop{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
+.drift-node{padding:8px 16px;border-radius:8px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,.08);flex-shrink:0}
+.dn-v{background:rgba(79,195,247,.06);border-color:rgba(79,195,247,.15);color:#4fc3f7}
+.dn-d{background:rgba(248,113,113,.06);border-color:rgba(248,113,113,.2);color:#f87171}
+.dn-c{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.15);color:#f59e0b}
+.dn-m{background:rgba(129,199,132,.06);border-color:rgba(129,199,132,.15);color:#81c784}
+.drift-arrow{color:#555;font-size:14px;flex-shrink:0}
+
+/* ===== 图E: 安全管线 ===== */
+.sec-pipe{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center}
+.sec-node{padding:10px 18px;border-radius:8px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,.08)}
+.sec-in{background:rgba(79,195,247,.06);border-color:rgba(79,195,247,.15);color:#81d4fa}
+.sec-chk{background:rgba(255,165,2,.06);border-color:rgba(255,165,2,.15);color:#ffb74d}
+.sec-bad{background:rgba(239,83,80,.06);border-color:rgba(239,83,80,.15);color:#ef5350}
+.sec-mask{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.15);color:#f59e0b}
+.sec-ok{background:rgba(129,199,132,.06);border-color:rgba(129,199,132,.15);color:#81c784}
+.sec-arrow{color:#555;font-size:16px}
+
+.detail-panel{display:none;background:#1e1e2e;border-radius:12px;padding:22px;margin-bottom:24px;border:1px solid #333}
+.detail-panel.active{display:block}
+.detail-panel .close{float:right;cursor:pointer;color:#888;font-size:18px;background:none;border:none}.detail-panel .close:hover{color:#fff}
+.detail-panel h3{font-size:16px;margin-bottom:6px}
+.detail-content{margin-top:8px;font-size:12px;color:#ccc;line-height:1.7}
+.detail-content b{color:#e0e0e0}
+.tag{padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;margin-right:4px}
+.tag.p0{background:#ff475720;color:#ff4757;border:1px solid #ff475740}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🔄 Loop Engine + 异常处理体系</h1>
+<p class="subtitle">三分类错误策略 · 四步恢复机制 · M7 drift 纠正链路 · 安全过滤管线</p>
+
+<!-- ===== 图A ===== -->
+<div class="section">
+  <h2>⚡ 错误分类器 — 三分类策略 (loop_engine.py · 253行)</h2>
+  <div class="classify-pipe">
+    <div class="pipe-entry"><div class="pe-icon">⚠️</div>Agent<br/>执行失败</div>
+    <div class="pipe-body">
+      <div class="pipe-label">classify_error() → 三路分发</div>
+      <div class="pipe-cards">
+        <div class="err-card ec-transient" onclick="show('t')">
+          <div class="ec-icon">🔁</div>
+          <div class="ec-title">TRANSIENT 瞬态</div>
+          <div class="ec-body">timeout · 429 · 503<br/>connection_error<br/><br/><b>策略: 自动重试</b><br/>指数退避 1s→2s→4s</div>
+          <div class="ec-limit">最多 3 次</div>
+        </div>
+        <div class="err-card ec-content" onclick="show('c')">
+          <div class="ec-icon">🔧</div>
+          <div class="ec-title">CONTENT 内容</div>
+          <div class="ec-body">json_parse_error<br/>empty_output<br/>verification_failed<br/><br/><b>策略: 四步恢复</b><br/>详见下方</div>
+          <div class="ec-limit">最多 3 次 · 同错×2 提前升级</div>
+        </div>
+        <div class="err-card ec-fatal" onclick="show('f')">
+          <div class="ec-icon">🚨</div>
+          <div class="ec-title">FATAL 致命</div>
+          <div class="ec-body">invalid_api_key<br/>permission_denied<br/>config_error<br/><br/><b>策略: 立即 HITL</b><br/>不重试 · 人工修复</div>
+          <div class="ec-limit">不重试</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 图B ===== -->
+<div class="section">
+  <h2>🔧 CONTENT 错误 · 四步恢复流程</h2>
+  <div class="steps-flow">
+    <div class="step s1" onclick="show('r1')">
+      <div class="sn">1</div><div class="st">Rollback 回滚</div><div class="sd">清除该Agent在<br/>CollabState中的产物<br/>恢复到执行前状态</div>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step s2" onclick="show('r2')">
+      <div class="sn">2</div><div class="st">Feedback 反馈</div><div class="sd">提取错误关键信息<br/>JSON位置/验证原因<br/>构建结构化修正指令</div>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step s3" onclick="show('r3')">
+      <div class="sn">3</div><div class="st">Inject 注入</div><div class="sd">修正指令追加到<br/>Agent下一次执行<br/>的 instruction 中</div>
+    </div>
+    <div class="step-arrow">→</div>
+    <div class="step s4" onclick="show('r4')">
+      <div class="sn">4</div><div class="st">Retry 重试</div><div class="sd">重新调用 agent_chat<br/>带修正指令<br/>→ 验证 → 通过/HITL</div>
+    </div>
+    <div class="step-arrow loop">↻</div>
+    <div style="font-size:10px;color:#f59e0b">≤3 次</div>
+  </div>
+  <div class="esc-bar">
+    <span style="font-size:10px;color:#888">升级策略:</span>
+    <div class="esc-node e1">第 1 次失败 → 自动重试</div><div class="esc-arrow">→</div>
+    <div class="esc-node e2">第 2 次同错 → 提前升级</div><div class="esc-arrow">→</div>
+    <div class="esc-node e3">第 3 次失败 → 强制升级</div><div class="esc-arrow">→</div>
+    <div class="esc-node eh">⏸ HITL 人工决策</div>
+  </div>
+</div>
+
+<!-- ===== 图C ===== -->
+<div class="section">
+  <h2>🔁 M7 drift 纠正链路 — 幻觉对抗核心</h2>
+  <div class="drift-loop">
+    <div class="drift-node dn-v">M7 验证</div>
+    <div class="drift-arrow">→</div>
+    <div class="drift-node dn-d">drift_detected=true<br/>需求理解偏差</div>
+    <div class="drift-arrow">→</div>
+    <div class="drift-node dn-c">清除 task_dag<br/>清除 artifacts<br/>构建偏差反馈</div>
+    <div class="drift-arrow">→</div>
+    <div class="drift-node dn-m">M1 重新分析<br/>以反馈为输入<br/>修正需求理解</div>
+    <div class="drift-arrow">→</div>
+    <div class="drift-node dn-v">M2 重新澄清</div>
+    <div class="drift-arrow">→</div>
+    <div class="drift-node dn-v">M4 重新分解</div>
+    <div class="drift-arrow">→</div>
+    <div class="drift-node dn-v">M6 重新执行</div>
+    <div class="drift-arrow">↻</div>
+    <div class="drift-node dn-v">M7 重新验证</div>
+  </div>
+  <div style="text-align:center;margin-top:12px;font-size:10px;color:#888">
+    <b style="color:#f87171">drift ≠ major:</b> major 是实现层 Bug（做错了）· drift 是需求层理解偏差（理解错了）· 重做 M6 无法修复 drift
+  </div>
+</div>
+
+<!-- ===== 图D ===== -->
+<div class="section">
+  <h2>🛡️ 安全过滤管线 (safety_filter.py · 71行)</h2>
+  <div class="sec-pipe">
+    <div class="sec-node sec-in">👤 用户消息</div>
+    <div class="sec-arrow">→</div>
+    <div class="sec-node sec-chk">🔒 Prompt Injection<br/>8 种正则检测</div>
+    <div class="sec-arrow">→</div>
+    <div class="sec-node sec-chk">🔐 PII 脱敏<br/>5 种正则</div>
+    <div class="sec-arrow">→</div>
+    <div class="sec-node sec-ok">✅ 安全<br/>传入引擎</div>
+  </div>
+  <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;justify-content:center">
+    <div class="sec-node sec-bad" style="font-weight:400">命中 → 🚫 拒绝</div>
+    <div class="sec-node sec-mask" style="font-weight:400">命中 → 🔐 [REDACTED]</div>
+  </div>
+</div>
+
+<!-- detail -->
+<div class="detail-panel" id="panel"><button class="close" onclick="closePanel()">✕</button><h3 id="pt"></h3><div style="margin:6px 0" id="ptags"></div><div class="detail-content" id="pc"></div></div>
+</div>
+
+<script>
+const D={
+t:{t:'TRANSIENT',tags:['P0'],c:'<b>检测</b>: timeout·429·503·connection_error·rate_limit<br><br><b>策略</b>: 自动重试 — 指数退避 1s→2s→4s·最多3次<br><br>3次全部失败→降级为CONTENT处理'},
+c:{t:'CONTENT',tags:['P0'],c:'<b>检测</b>: json_parse_error·empty_output·verification_failed·format_mismatch<br><br><b>策略</b>: 四步恢复 Rollback→Feedback→Inject→Retry<br><br><b>MAX_RETRIES=3</b>·相同错误连续2次→提前升级(不等到第3次)·不同错误分别计数'},
+f:{t:'FATAL',tags:['P0'],c:'<b>检测</b>: invalid_api_key·permission_denied·config_error·model_not_found<br><br><b>策略</b>: 立即 escalate_hitl — 不重试<br><br>这类错误无法通过重试解决——需要人工修复配置/权限/API Key'},
+r1:{t:'Step 1: Rollback',tags:['P1'],c:'清除该Agent在CollabState中的产物(artifacts字典中删除对应task_id)。恢复到执行前状态，确保重试从干净上下文开始。'},
+r2:{t:'Step 2: Feedback',tags:['P1'],c:'从错误中提取关键信息: JSON解析失败位置·验证feedback·空输出提示<br>构建结构化修正指令字符串。'},
+r3:{t:'Step 3: Inject',tags:['P1'],c:'修正指令追加到Agent下一次执行的instruction中:<br>original + "上次执行被拒绝: {feedback} 请针对性修改后重新输出。"'},
+r4:{t:'Step 4: Retry',tags:['P1'],c:'重新调用agent_chat(prompt)，prompt中已包含修正指令。执行后重新进入审核/验证流程。'},
+};
+function show(k){const d=D[k];if(!d)return;const p=document.getElementById('panel');document.getElementById('pt').textContent=d.t;document.getElementById('ptags').innerHTML=d.tags.map(t=>'<span class="tag p0">'+t+'</span>').join('');document.getElementById('pc').innerHTML=d.c;p.classList.add('active');p.scrollIntoView({behavior:'smooth'})}
+function closePanel(){document.getElementById('panel').classList.remove('active')}
+</script>
+</body></html>

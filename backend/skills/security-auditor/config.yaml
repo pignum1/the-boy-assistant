@@ -1,0 +1,7 @@
+trigger:
+  keywords: ["安全审计", "OWASP", "安全检查", "漏洞扫描", "安全报告"]
+parameters:
+  - name: scope
+    description: 审计范围 (code/infra/full)
+    required: false
+    default: code

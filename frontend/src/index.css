@@ -1,0 +1,231 @@
+@import "tailwindcss";
+
+/* ======== Design System from Mockups ======== */
+:root {
+  --bg-deep: #060a14;
+  --bg-base: #0a0f1e;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2235;
+  --bg-elevated: #1e293b;
+  --border-subtle: rgba(148, 163, 184, 0.08);
+  --border-medium: rgba(148, 163, 184, 0.12);
+  --border-active: rgba(148, 163, 184, 0.2);
+
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-dim: #475569;
+
+  --gold-400: #fbbf24;
+  --gold-500: #f59e0b;
+  --gold-bg: rgba(245, 158, 11, 0.08);
+  --gold-border: rgba(245, 158, 11, 0.2);
+
+  --blue-400: #38bdf8;
+  --blue-bg: rgba(56, 189, 248, 0.08);
+  --blue-border: rgba(56, 189, 248, 0.2);
+
+  --purple-400: #a78bfa;
+  --purple-bg: rgba(167, 139, 250, 0.08);
+  --purple-border: rgba(167, 139, 250, 0.2);
+
+  --green-400: #34d399;
+  --green-bg: rgba(52, 211, 153, 0.08);
+  --green-border: rgba(52, 211, 153, 0.2);
+
+  --red-400: #f87171;
+  --red-bg: rgba(248, 113, 113, 0.08);
+  --red-border: rgba(248, 113, 113, 0.2);
+
+  --cyan-400: #22d3ee;
+  --cyan-bg: rgba(34, 211, 238, 0.08);
+  --cyan-border: rgba(34, 211, 238, 0.2);
+
+  --font-body: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --sidebar-width: 224px;
+
+  /* Chat-specific */
+  --chat-bg: #f5f6f7;
+  --chat-msg-user-bg: #0066ff;
+  --chat-msg-user-text: #ffffff;
+  --chat-msg-agent-bg: #ffffff;
+  --chat-msg-agent-text: #1f2937;
+  --chat-msg-agent-border: #e5e7eb;
+  --chat-header-bg: #ffffff;
+  --chat-input-bg: #f9fafb;
+  --chat-input-border: #e5e7eb;
+  --chat-reasoning-bg: #f8fafc;
+  --chat-reasoning-border: #e2e8f0;
+  --chat-reasoning-btn-bg: #f0f9ff;
+  --chat-reasoning-btn-border: #bae6fd;
+  --chat-btn-active-bg: #e0e7ff;
+  --chat-btn-active-text: #4338ca;
+  --chat-thinking-bg: #dbeafe;
+  --chat-panel-bg: #0f172a;
+  --chat-panel-text: #f1f5f9;
+  --chat-panel-dim: #94a3b8;
+  --chat-link-color: #0369a1;
+  --chat-send-disabled-bg: #e5e7eb;
+}
+
+[data-theme="dark"] {
+  --bg-deep: #060a14;
+  --bg-base: #0a0f1e;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2235;
+  --bg-elevated: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-dim: #475569;
+  --border-subtle: rgba(148, 163, 184, 0.08);
+  --border-medium: rgba(148, 163, 184, 0.12);
+  --border-active: rgba(148, 163, 184, 0.2);
+
+  --chat-bg: #0f172a;
+  --chat-msg-user-bg: #3b82f6;
+  --chat-msg-user-text: #ffffff;
+  --chat-msg-agent-bg: #1e293b;
+  --chat-msg-agent-text: #e2e8f0;
+  --chat-msg-agent-border: rgba(148, 163, 184, 0.12);
+  --chat-header-bg: #0f172a;
+  --chat-input-bg: #1e293b;
+  --chat-input-border: rgba(148, 163, 184, 0.12);
+  --chat-reasoning-bg: #1e293b;
+  --chat-reasoning-border: rgba(148, 163, 184, 0.12);
+  --chat-reasoning-btn-bg: #1e3a5f;
+  --chat-reasoning-btn-border: rgba(59, 130, 246, 0.3);
+  --chat-btn-active-bg: rgba(59, 130, 246, 0.15);
+  --chat-btn-active-text: #60a5fa;
+  --chat-thinking-bg: rgba(59, 130, 246, 0.1);
+  --chat-panel-bg: #1e293b;
+  --chat-panel-text: #f1f5f9;
+  --chat-panel-dim: #94a3b8;
+  --chat-link-color: #38bdf8;
+  --chat-send-disabled-bg: rgba(148, 163, 184, 0.2);
+}
+
+[data-theme="light"] {
+  --bg-deep: #f8fafc;
+  --bg-base: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --bg-elevated: #f8fafc;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-medium: rgba(0, 0, 0, 0.1);
+  --border-active: rgba(0, 0, 0, 0.16);
+
+  --chat-bg: #f1f5f9;
+  --chat-msg-user-bg: #0066ff;
+  --chat-msg-user-text: #ffffff;
+  --chat-msg-agent-bg: #ffffff;
+  --chat-msg-agent-text: #1f2937;
+  --chat-msg-agent-border: #e2e8f0;
+  --chat-header-bg: #ffffff;
+  --chat-input-bg: #ffffff;
+  --chat-input-border: #e2e8f0;
+  --chat-reasoning-bg: #f8fafc;
+  --chat-reasoning-border: #e2e8f0;
+  --chat-reasoning-btn-bg: #eff6ff;
+  --chat-reasoning-btn-border: #bfdbfe;
+  --chat-btn-active-bg: #e0e7ff;
+  --chat-btn-active-text: #4338ca;
+  --chat-thinking-bg: #dbeafe;
+  --chat-panel-bg: #ffffff;
+  --chat-panel-text: #0f172a;
+  --chat-panel-dim: #64748b;
+  --chat-link-color: #0369a1;
+  --chat-send-disabled-bg: #e5e7eb;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+#root { width: 100%; height: 100vh; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.25); }
+
+/* React Flow overrides for dark theme */
+.react-flow__background { background: var(--bg-deep) !important; }
+.react-flow__minimap { background: var(--bg-card) !important; border: 1px solid var(--border-subtle) !important; border-radius: 8px !important; }
+.react-flow__controls { background: var(--bg-card) !important; border: 1px solid var(--border-subtle) !important; border-radius: 8px !important; }
+.react-flow__controls-button { background: var(--bg-card) !important; border-color: var(--border-subtle) !important; fill: var(--text-secondary) !important; }
+.react-flow__controls-button:hover { background: var(--bg-elevated) !important; }
+.react-flow__edge-path { stroke: var(--text-dim) !important; }
+.react-flow__edge-textbg { fill: var(--bg-card) !important; }
+.react-flow__edge-text { fill: var(--text-muted) !important; font-family: var(--font-mono) !important; font-size: 10px !important; }
+.react-flow__attribution { display: none !important; }
+
+/* ── Markdown 渲染样式 ── */
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  margin: 12px 0 6px; font-weight: 650; color: var(--text-primary);
+}
+.markdown-body h1 { font-size: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px; }
+.markdown-body h2 { font-size: 14px; }
+.markdown-body h3 { font-size: 13px; color: var(--text-secondary); }
+.markdown-body p { margin: 4px 0; line-height: 1.6; }
+.markdown-body ul, .markdown-body ol { margin: 4px 0; padding-left: 20px; }
+.markdown-body li { margin: 2px 0; line-height: 1.5; }
+.markdown-body strong { color: var(--text-primary); font-weight: 650; }
+.markdown-body em { color: var(--gold-400); }
+.markdown-body code {
+  font-family: var(--font-mono); font-size: 11px;
+  background: rgba(148,163,184,0.1); padding: 1px 5px; border-radius: 3px;
+  color: var(--cyan-400);
+}
+.markdown-body pre {
+  background: #0d1117; border: 1px solid var(--border-medium);
+  border-radius: 8px; padding: 12px 14px; margin: 8px 0;
+  overflow-x: auto;
+}
+.markdown-body pre code {
+  background: none; padding: 0; color: var(--text-primary);
+  font-size: 11px; line-height: 1.5;
+}
+.markdown-body blockquote {
+  border-left: 3px solid var(--gold-500);
+  padding: 4px 12px; margin: 8px 0;
+  color: var(--text-muted); font-style: italic;
+  background: rgba(245,158,11,0.05); border-radius: 0 6px 6px 0;
+}
+.markdown-body hr {
+  border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0;
+}
+.markdown-body table {
+  border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 11px;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid var(--border-subtle); padding: 6px 10px; text-align: left;
+}
+.markdown-body th {
+  background: var(--bg-elevated); font-weight: 600;
+}
+
+/* ── 打字光标闪烁动画 ── */
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ── Pulse 动画（用于运行中的节点）── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

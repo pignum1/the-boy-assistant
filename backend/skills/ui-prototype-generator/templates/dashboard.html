@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard 原型</title>
+<style>
+  :root { --bg-base: #0d1117; --bg-card: #161b22; --border-subtle: rgba(255,255,255,0.06); --border-medium: rgba(255,255,255,0.12); --text-primary: #e6edf3; --text-secondary: #8b949e; --text-muted: #6e7681; --blue-400: #58a6ff; --blue-bg: rgba(56,139,253,0.1); --green-400: #3fb950; --green-bg: rgba(63,185,80,0.1); --gold-400: #d29922; --gold-bg: rgba(210,153,34,0.1); --red-400: #f85149; --red-bg: rgba(248,81,73,0.1); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'PingFang SC', sans-serif; background: var(--bg-base); color: var(--text-primary); padding: 28px 32px; }
+  h1 { font-size: 24px; font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 20px 0; }
+  .stat-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; }
+  .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .stat-value { font-size: 32px; font-weight: 700; margin: 8px 0 4px; }
+  .stat-change { font-size: 12px; }
+  .stat-up { color: var(--green-400); }
+  .stat-down { color: var(--red-400); }
+  .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+  .card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; }
+  .card h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  .chart-placeholder { height: 200px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px dashed var(--border-medium); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; }
+  .activity-item { padding: 10px 0; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; font-size: 13px; }
+  .activity-item:last-child { border: none; }
+  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+  <h1>Dashboard</h1>
+  <div class="stats">
+    <div class="stat-card"><div class="stat-label">总用户数</div><div class="stat-value">12,846</div><div class="stat-change stat-up">+12.5% vs 上月</div></div>
+    <div class="stat-card"><div class="stat-label">活跃用户</div><div class="stat-value">3,421</div><div class="stat-change stat-up">+8.2% vs 上月</div></div>
+    <div class="stat-card"><div class="stat-label">今日收入</div><div class="stat-value">¥28,450</div><div class="stat-change stat-down">-3.1% vs 昨日</div></div>
+    <div class="stat-card"><div class="stat-label">转化率</div><div class="stat-value">4.8%</div><div class="stat-change stat-up">+0.5% vs 上周</div></div>
+  </div>
+  <div class="grid">
+    <div class="card"><h3>收入趋势</h3><div class="chart-placeholder">[Chart Placeholder]</div></div>
+    <div class="card"><h3>最近活动</h3>
+      <div class="activity-item"><span>新用户注册</span><span style="color:var(--text-muted)">2 分钟前</span></div>
+      <div class="activity-item"><span>订单 #1024 已支付</span><span style="color:var(--text-muted)">15 分钟前</span></div>
+      <div class="activity-item"><span>产品上架</span><span style="color:var(--text-muted)">1 小时前</span></div>
+    </div>
+  </div>
+</body>
+</html>

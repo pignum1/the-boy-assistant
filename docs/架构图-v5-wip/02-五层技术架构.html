@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图2: 五层技术架构 — The Boy Assistant v5</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', Roboto, sans-serif;
+    background: #0f0f1a; color: #e0e0e0; padding: 24px;
+}
+.container { max-width: 1300px; margin: 0 auto; }
+h1 { text-align: center; font-size: 24px; margin-bottom: 4px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.subtitle { text-align: center; color: #888; margin-bottom: 28px; font-size: 13px; }
+
+/* ===== 架构容器 ===== */
+.arch-container { display: flex; border-radius: 14px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35); margin-bottom: 28px; min-height: 520px; }
+
+/* ===== 左侧色标栏 ===== */
+.layers-bar { width: 88px; display: flex; flex-direction: column; flex-shrink: 0; }
+.layers-bar .layer-label { flex: 1; display: flex; align-items: center; justify-content: center;
+    writing-mode: vertical-lr; text-orientation: mixed;
+    font-size: 12px; font-weight: 600; letter-spacing: 2px; white-space: nowrap;
+    padding: 8px 0; border-right: 1px solid rgba(255,255,255,0.06); }
+.layer-label.fe       { background: #1a1530; color: #b39ddb; }
+.layer-label.comm     { background: #152530; color: #4fc3f7; }
+.layer-label.orch     { background: #251515; color: #ef5350; }
+.layer-label.cap      { background: #152515; color: #81c784; }
+.layer-label.data     { background: #1a1a2e; color: #90a4ae; }
+.layer-label.harness  { background: #2d1b3d; color: #ce93d8; }
+
+/* ===== 右侧卡片区 ===== */
+.main-content { flex: 1; display: flex; flex-direction: column; }
+.arch-row { flex: 1; display: flex; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.arch-row:last-child { border-bottom: none; }
+
+.module-card { flex: 1; padding: 10px 12px; border-right: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer; transition: all 0.2s; min-height: 60px;
+    display: flex; flex-direction: column; justify-content: center; }
+.module-card:last-child { border-right: none; }
+.module-card:hover { background: rgba(255,255,255,0.04); transform: translateY(-1px); }
+.module-card .icon { font-size: 16px; margin-bottom: 2px; }
+.module-card .name { font-size: 12px; font-weight: 600; margin-bottom: 1px; }
+.module-card .desc { font-size: 9.5px; color: #999; line-height: 1.3; }
+
+.row-fe      { background: #1a1530; }
+.row-comm    { background: #152530; }
+.row-orch    { background: #251515; }
+.row-cap     { background: #152515; }
+.row-data    { background: #1a1a2e; }
+.row-harness { background: #2d1b3d; }
+
+/* ===== 层间通信标注 ===== */
+.inter-layer {
+    background: rgba(255,255,255,0.02); border-radius: 14px; padding: 14px 24px;
+    margin-bottom: 28px; border: 1px solid rgba(255,255,255,0.05);
+    display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;
+}
+.inter-item { font-size: 11px; color: var(--muted, #8899aa);
+    display: flex; align-items: center; gap: 6px; }
+.inter-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ===== 详情面板 ===== */
+.detail-panel { display: none; background: #1e1e2e; border-radius: 12px; padding: 22px;
+    margin-bottom: 28px; border: 1px solid #333; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
+.detail-panel.active { display: block; }
+.detail-panel .close { float: right; cursor: pointer; color: #888; font-size: 18px; background: none; border: none; }
+.detail-panel .close:hover { color: #fff; }
+.detail-panel h3 { font-size: 17px; margin-bottom: 6px; }
+.detail-tags { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+.tag { padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 600; }
+.tag.p0 { background: #ff475720; color: #ff4757; border: 1px solid #ff475740; }
+.tag.p1 { background: #ffa50220; color: #ffa502; border: 1px solid #ffa50240; }
+.tag.layer-tag { background: rgba(102,126,234,0.12); color: #667eea; border: 1px solid rgba(102,126,234,0.25); }
+.detail-content { margin-top: 12px; font-size: 13px; color: #ccc; line-height: 1.75; }
+.detail-content b { color: #e0e0e0; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🏛️ The Boy Assistant v5.0 — 五层技术架构</h1>
+    <p class="subtitle">交互层 → 通信层 → 编排层 → 能力层 → 数据层 · Harness 横切 · 点击模块查看详情</p>
+
+    <!-- ===== 主架构图 ===== -->
+    <div class="arch-container">
+        <div class="layers-bar">
+            <div class="layer-label fe">🖥️ 交互层</div>
+            <div class="layer-label comm">📡 通信层</div>
+            <div class="layer-label orch">⚙️ 编排层</div>
+            <div class="layer-label cap">🧩 能力层</div>
+            <div class="layer-label data">🗄️ 数据层</div>
+            <div class="layer-label harness">🛡️ Harness</div>
+        </div>
+
+        <div class="main-content">
+            <!-- L1 交互层 -->
+            <div class="arch-row row-fe">
+                <div class="module-card" onclick="showDetail('chatview')">
+                    <div class="icon">💬</div><div class="name">ChatRoomView</div><div class="desc">三模式统一入口·暗流架构</div></div>
+                <div class="module-card" onclick="showDetail('chatstream')">
+                    <div class="icon">📜</div><div class="name">ChatStream</div><div class="desc">消息时间线·Markdown·CodeBlock</div></div>
+                <div class="module-card" onclick="showDetail('drawerhost')">
+                    <div class="icon">📂</div><div class="name">DrawerHost</div><div class="desc">多抽屉(≤3)·独立宽度·Esc</div></div>
+                <div class="module-card" onclick="showDetail('hitlcard')">
+                    <div class="icon">🎯</div><div class="name">HITLCard</div><div class="desc">三状态机·pending→answering→answered</div></div>
+                <div class="module-card" onclick="showDetail('chatinput')">
+                    <div class="icon">⌨️</div><div class="name">ChatInput</div><div class="desc">四状态输入框·永不禁用</div></div>
+                <div class="module-card" onclick="showDetail('thinking')">
+                    <div class="icon">⏳</div><div class="name">ThinkingIndicator</div><div class="desc">活跃Agent·自动折叠(>3个)</div></div>
+            </div>
+
+            <!-- L2 通信层 -->
+            <div class="arch-row row-comm">
+                <div class="module-card" onclick="showDetail('ws')">
+                    <div class="icon">🔌</div><div class="name">WebSocket 单连接</div><div class="desc">三模式多路复用·10+消息类型</div></div>
+                <div class="module-card" onclick="showDetail('wsevents')">
+                    <div class="icon">📶</div><div class="name">useWsEvents</div><div class="desc">事件订阅·重连恢复·心跳</div></div>
+                <div class="module-card" onclick="showDetail('streamtoken')">
+                    <div class="icon">⚡</div><div class="name">Stream Token</div><div class="desc">逐token推送·流式占位消息</div></div>
+                <div class="module-card" onclick="showDetail('rest')">
+                    <div class="icon">🌐</div><div class="name">REST API</div><div class="desc">Session/Team CRUD·历史加载</div></div>
+            </div>
+
+            <!-- L3 编排层 -->
+            <div class="arch-row row-orch">
+                <div class="module-card" onclick="showDetail('router')">
+                    <div class="icon">🚦</div><div class="name">Router</div><div class="desc">collaboration_mode → Engine</div></div>
+                <div class="module-card" onclick="showDetail('swarm')">
+                    <div class="icon">💬</div><div class="name">Swarm Engine</div><div class="desc">三阶段·自由讨论·HITL检测</div></div>
+                <div class="module-card" onclick="showDetail('supervisor')">
+                    <div class="icon">👑</div><div class="name">Supervisor Engine</div><div class="desc">M0-M7 LangGraph·层级委派</div></div>
+                <div class="module-card" onclick="showDetail('langgraph')">
+                    <div class="icon">🔀</div><div class="name">LangGraph Engine</div><div class="desc">拓扑排序·7节点·分层并行</div></div>
+                <div class="module-card" onclick="showDetail('hitl')">
+                    <div class="icon">🎯</div><div class="name">HITL Detector</div><div class="desc">三级检测·4种选项提取</div></div>
+                <div class="module-card" onclick="showDetail('org')">
+                    <div class="icon">🌳</div><div class="name">Org Hierarchy</div><div class="desc">委派树·LCA审核·升级链</div></div>
+            </div>
+
+            <!-- L4 能力层 -->
+            <div class="arch-row row-cap">
+                <div class="module-card" onclick="showDetail('agentf')">
+                    <div class="icon">🏭</div><div class="name">Agent Factory</div><div class="desc">组装 Model+Persona+Tools</div></div>
+                <div class="module-card" onclick="showDetail('memory')">
+                    <div class="icon">💾</div><div class="name">Memory L1-L4</div><div class="desc">四层记忆·Token裁剪·继承</div></div>
+                <div class="module-card" onclick="showDetail('ctxpipe')">
+                    <div class="icon">📚</div><div class="name">Context Pipeline</div><div class="desc">M5上下文组装·WorkerCtx</div></div>
+                <div class="module-card" onclick="showDetail('rag')">
+                    <div class="icon">🔍</div><div class="name">RAG Engine</div><div class="desc">Dense+Sparse+Rerank检索</div></div>
+                <div class="module-card" onclick="showDetail('modeladp')">
+                    <div class="icon">🤖</div><div class="name">Model Adapter</div><div class="desc">LiteLLM·20+Provider·Stream</div></div>
+                <div class="module-card" onclick="showDetail('fallback')">
+                    <div class="icon">⛓️</div><div class="name">Fallback Chain</div><div class="desc">降级·重试·升级</div></div>
+                <div class="module-card" onclick="showDetail('workspace')">
+                    <div class="icon">📂</div><div class="name">Workspace Mgr</div><div class="desc">Session隔离·文件提取·快照</div></div>
+                <div class="module-card" onclick="showDetail('pool')">
+                    <div class="icon">🏊</div><div class="name">Agent Pool</div><div class="desc">注册发现·能力匹配·状态</div></div>
+            </div>
+
+            <!-- L5 数据层 -->
+            <div class="arch-row row-data">
+                <div class="module-card" onclick="showDetail('pg')">
+                    <div class="icon">🗄️</div><div class="name">PostgreSQL 16</div><div class="desc">asyncpg·JSONB·UUID·主存储</div></div>
+                <div class="module-card" onclick="showDetail('redis')">
+                    <div class="icon">⚡</div><div class="name">Redis 7</div><div class="desc">会话状态·Pub/Sub·限流计数</div></div>
+                <div class="module-card" onclick="showDetail('mq')">
+                    <div class="icon">📨</div><div class="name">Blackboard</div><div class="desc">跨团队消息·Redis Pub/Sub</div></div>
+            </div>
+
+            <!-- Harness 横切保障层 -->
+            <div class="arch-row row-harness">
+                <div class="module-card" onclick="showDetail('h-before')">
+                    <div class="icon">①</div><div class="name">before_execution</div><div class="desc">Prompt构建·上下文注入·Token检查</div></div>
+                <div class="module-card" onclick="showDetail('h-after')">
+                    <div class="icon">②</div><div class="name">after_execution</div><div class="desc">文件提取·Token记录·持久化·审计</div></div>
+                <div class="module-card" onclick="showDetail('h-verify')">
+                    <div class="icon">③</div><div class="name">verify</div><div class="desc">独立盲审·drift检测</div></div>
+                <div class="module-card" onclick="showDetail('h-cleanup')">
+                    <div class="icon">④</div><div class="name">cleanup</div><div class="desc">资源回收·状态清理</div></div>
+                <div class="module-card" onclick="showDetail('loop')">
+                    <div class="icon">🔄</div><div class="name">Loop Engine</div><div class="desc">三分类·四步恢复·自愈</div></div>
+                <div class="module-card" onclick="showDetail('observer')">
+                    <div class="icon">👁️</div><div class="name">Observer</div><div class="desc">EventBus·15 EventType·持久化</div></div>
+                <div class="module-card" onclick="showDetail('safety')">
+                    <div class="icon">🔒</div><div class="name">Security</div><div class="desc">注入检测·PII脱敏·限流·Auth</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 层间通信协议 ===== -->
+    <div class="inter-layer">
+        <span class="inter-item"><span class="inter-dot" style="background:#b39ddb"></span>交互→通信: <b>WebSocket JSON</b></span>
+        <span style="color:#444;">|</span>
+        <span class="inter-item"><span class="inter-dot" style="background:#4fc3f7"></span>通信→编排: <b>async function call</b></span>
+        <span style="color:#444;">|</span>
+        <span class="inter-item"><span class="inter-dot" style="background:#ef5350"></span>编排→能力: <b>function call</b></span>
+        <span style="color:#444;">|</span>
+        <span class="inter-item"><span class="inter-dot" style="background:#81c784"></span>能力→数据: <b>SQL (asyncpg) / Redis</b></span>
+        <span style="color:#444;">|</span>
+        <span class="inter-item"><span class="inter-dot" style="background:#ce93d8"></span>Harness → 编排+能力: <b>钩子注入 (横切)</b></span>
+    </div>
+
+    <!-- ===== 详情面板 ===== -->
+    <div class="detail-panel" id="detailPanel">
+        <button class="close" onclick="closeDetail()">✕</button>
+        <h3 id="detailTitle"></h3>
+        <div class="detail-tags" id="detailTags"></div>
+        <div class="detail-content" id="detailContent"></div>
+    </div>
+</div>
+
+<script>
+const data = {
+    // L1
+    chatview: { t:'💬 ChatRoomView — 聊天室主容器', tags:['P0','交互层'], c:'<b>职责</b>：三模式统一入口。无论后台运行哪种引擎，用户始终面对同一个聊天界面。<br><br><b>暗流信息架构</b>：表面对话流(ChatStream)+暗流抽屉(DrawerHost)+思考指示器(ThinkingIndicator)+输入框(ChatInput)。<br><br><b>状态管理</b>：useChatRoomState(useReducer)管理ChatRoomState，useWsEvents连接WebSocket。<br><br><b>文件</b>：ChatRoomView.tsx' },
+    chatstream: { t:'📜 ChatStream — 消息流渲染', tags:['P0','交互层'], c:'<b>支持的消息类型</b>：UserMessage·AgentMessage(Markdown+代码块)·HITLCard·SystemDivider·VerificationItem·SystemSummary。<br><br><b>代码块渲染</b>：CodeBlockRenderer解析```围栏，语言标签+复制按钮。<br><b>流式占位</b>：stream_token事件→创建流式消息(isStreaming=true)→agent_message替换。<br><b>长文本折叠</b>：>500字符默认折叠。' },
+    drawerhost: { t:'📂 DrawerHost — 多抽屉系统', tags:['P1','交互层'], c:'<b>4种抽屉</b>：📋WorkPlanDrawer·📁ArtifactsDrawer·👥TeamDrawer·🔀WorkflowDrawer<br><br><b>交互</b>：最多3个同时打开·独立拖拽宽度(20%-60%)·Esc关闭(单个关闭最近/多个关闭全部)·移动端BottomSheet。<br><br><b>ArtifactsDrawer</b>：按Agent分组·显示真实路径·点击预览Markdown(ReactMarkdown+remarkGfm)·Modal遮罩。' },
+    hitlcard: { t:'🎯 HITLCard — 人机协作状态机', tags:['P0','交互层'], c:'<b>三状态</b>：pending(选项按钮)→answering(提示去输入框)→answered(显示回答+原选项只读回看)。<br><br><b>共享组件</b>：HITLOptions支持5种模式(interactive/readonly/selectable/multiSelect/answerInput)，三引擎统一复用。<br><br><b>hitlKind</b>：clarification/confirmation/agent_invite/review/delta_plan。' },
+    chatinput: { t:'⌨️ ChatInput — 输入框行为机', tags:['P0','交互层'], c:'<b>四状态·永不禁用</b>：<br>IDLE(发送chat消息)·ANSWERING(发送HITL响应)·THINKING(输入触发软中断)·INTERRUPTING(输入加入介入上下文)<br><br><b>设计理由</b>：LLM输出的选项不可靠(可能遗漏"我有其他想法")，用户始终有输入框作为降级路径。Enter键始终是"发送"。' },
+    thinking: { t:'⏳ ThinkingIndicator — 思考状态条', tags:['P2','交互层'], c:'<b>职责</b>：显示当前活跃Agent的思考状态(emoji+名称+摘要+耗时)。<br><br><b>折叠机制</b>：超过3个Agent自动折叠为"N个Agent工作中▸展开"一行。<br><b>Tick机制</b>：ThinkingTickProvider每秒更新耗时显示。' },
+
+    // L2
+    ws: { t:'🔌 WebSocket 单连接 — 三模式多路复用', tags:['P0','通信层'], c:'<b>消息类型路由</b>(通过data.type字段区分)：<br>agent_message·stream_token·hitl_notification·task_status·task_dag·files_changed·reasoning_complete·thinking_update·message_complete·error<br><br><b>上行</b>：chat·hitl_resume·interrupt<br><b>Vite Proxy</b>：开发环境将/ws/转发到后端，避免CORS。<br><br><b>文件</b>：api/v1/ws.py' },
+    wsevents: { t:'📶 useWsEvents — 前端WS管理', tags:['P1','通信层'], c:'<b>职责</b>：建立WS连接→onmessage解析JSON→dispatch(Action)→reducer更新state。<br><br>维护wsConnected状态(🟢/⚪)，reconnectTimerRef防setTimeout泄漏，提供sendChat/sendHitlResume/sendInterrupt/sendResume。' },
+    streamtoken: { t:'⚡ Stream Token — 流式渲染', tags:['P1','通信层'], c:'<b>后端</b>：agent_chat_stream→async for token→send_fn({type:"stream_token",payload:{token,agent,task_id}})<br><b>前端</b>：WS/STREAM_TOKEN→创建/追加流式占位消息(isStreaming=true)→agent_message替换<br><b>回退</b>：流式失败时自动回退到非流式agent_chat。' },
+    rest: { t:'🌐 REST API — 配置管理+历史', tags:['P0','通信层'], c:'<b>主要端点</b>：<br>GET/POST /sessions — 会话CRUD<br>GET /sessions/:id/messages — 历史消息(从Memory表level=context查询)<br>GET/POST/PUT /teams — 团队+模式配置<br>GET /workflows — 工作流列表<br>GET /sessions/:id/workspace/files — 产物文件' },
+
+    // L3
+    router: { t:'🚦 Router — 模式分发', tags:['P0','编排层'], c:'<b>分发逻辑</b>：根据team.collaboration_mode→swarm/supervisor/langgraph<br><b>公共接口</b>：run(session_id,team,user_message,send_fn,harness)+resume(...)<br>router.py定义dispatch_chat和dispatch_resume两个入口。' },
+    swarm: { t:'💬 Swarm Engine — 群聊引擎 (864行)', tags:['P0','编排层'], c:'<b>三阶段</b>：RoundTable讨论(轮询发言≤3轮)→Agent Execution(注入Harness)→Completion/HITL<br><b>HITL检测</b>：L1显式标记→L2结构化选项→L3六特征评分≥3(OPTION_LIST×2+QUESTION+USER_DIRECT+LAST_SPEAKER+NO_RECENT-EXCLUDED)<br><b>文件</b>：swarm_engine.py' },
+    supervisor: { t:'👑 Supervisor Engine — 主管引擎', tags:['P0','编排层'], c:'<b>M0-M7 LangGraph管道</b>：意图路由→需求分析→澄清确认→Agent编排→任务分解→层级执行→独立验证<br><b>组织层级注入</b>：DB(team_supervisor_configs+relations)→load_org_structure→m6_delegate委派→m6_escalate升级<br><b>M7增强</b>：drift_detected→M1重分析(带验证反馈)<br><b>文件</b>：supervisor_engine.py+graph.py+M0-M7节点' },
+    langgraph: { t:'🔀 LangGraph Engine — 工作流引擎 (1281行)', tags:['P0','编排层'], c:'<b>执行流程</b>：workflow→拓扑排序(Kahn)→分层(同层无依赖)→asyncio.gather并行<br><b>7节点类型</b>：Start/Agent/Condition/Router/Validation/HITL/End<br><b>Agent通信</b>：artifacts字典(上游→下游)·PeerMailbox(任意↔任意)·workspace文件<br><b>文件</b>：langgraph_engine.py+langgraph_pause.py' },
+    hitl: { t:'🎯 HITL Detector — 三级检测', tags:['P0','编排层'], c:'<b>检测等级</b>：L1__HITL__标记(conf=1.0)→L2**方案X**结构(conf=0.9)→L3六特征评分(conf=0.7)→L4关键词兜底<br><b>4种选项提取</b>：Markdown标题·Regex方案·编号列表·关键词分割<br><b>文件</b>：hitl_detector.py' },
+    org: { t:'🌳 Org Hierarchy — 组织层级 (475行)', tags:['P1','编排层'], c:'<b>核心功能</b>：load_org_structure→build_delegation_tree→find_reviewer_for_level(LCA算法)→find_escalation_target(沿树升级)→generate_role_context→format_org_tree_desc<br><b>文件</b>：org_hierarchy.py' },
+
+    // L4
+    agentf: { t:'🏭 Agent Factory — Agent组装', tags:['P0','能力层'], c:'<b>公式</b>：Agent=Model+Persona+Tools<br>Agent实例绑定默认Model(可被编排层覆盖)，注入Persona的system_prompt+capabilities，注册Tool。<br>跨团队复用(同一Agent可加入多个Team)。<br><b>文件</b>：agent_factory.py' },
+    memory: { t:'💾 Memory L1-L4 — 四层记忆', tags:['P0','能力层'], c:'<b>L1 Context Window</b>：LLM原生·单次请求<br><b>L2 Session</b>：PostgreSQL·会话期间<br><b>L3 Team</b>：PostgreSQL·30天<br><b>L4 Project</b>：Redis·全局共享<br><br><b>Token裁剪</b>：预算1M/session，System>当前任务>前置产物>PeerMsg>记忆>历史<br><b>文件</b>：memory_manager.py' },
+    ctxpipe: { t:'📚 Context Pipeline (M5) — 上下文组装', tags:['P0','能力层'], c:'<b>build_context()</b>：CollabState→WorkerContext(需求锚+前置产物+对等消息+角色上下文)<br><b>format_context()</b>：WorkerContext→文本prompt<br>Harness._build_prompt()调用context_pipeline统一构建，三引擎共享。<br><b>文件</b>：m5_context_pipeline.py' },
+    rag: { t:'🔍 RAG Engine — 混合检索', tags:['P1','能力层'], c:'<b>混合检索</b>：Dense(pgvector)+Sparse(BM25)<br><b>Reranker</b>：bge-reranker-v2-m3 Cross-Encoder<br><b>知识库层级</b>：Agent专属>团队公共>全局<br><b>文件</b>：rag/hybrid_search.py' },
+    modeladp: { t:'🤖 Model Adapter — LLM适配', tags:['P0','能力层'], c:'<b>适配器模式</b>：OpenAI/Claude/Gemini/DeepSeek统一接口<br><b>Streaming</b>：SSE流式输出<br><b>超时</b>：DeepSeek 120s(大模型推理慢)，其余60s<br><b>Retry</b>：指数退避1s→2s→4s，最多3次<br><b>文件</b>：adapters/llm/litellm_adapter.py' },
+    fallback: { t:'⛓️ Fallback Chain — 模型降级', tags:['P1','能力层'], c:'<b>降级顺序</b>：primary→secondary→mock<br><b>触发</b>：timeout/rate_limit/503/connection_error<br><b>与Loop Engine协作</b>：TRANSIENT→Fallback，FATAL→跳过直接HITL<br><b>文件</b>：fallback_chain.py' },
+    workspace: { t:'📂 Workspace Mgr — 工作空间', tags:['P1','能力层'], c:'<b>隔离模型</b>：{WORKSPACE_BASE}/{session_id}<br><b>文件提取</b>：正则解析```语言路径→workspace写入<br><b>Snapshot</b>：关键节点快照·回滚<br><b>文件</b>：services/workspace/manager.py' },
+    pool: { t:'🏊 Agent Pool — 资源池', tags:['P2','能力层'], c:'<b>匹配策略</b>：capability匹配(required∩Agent.capabilities)<br><b>状态</b>：idle/busy/error<br><b>独占约束</b>：同一时刻一个Agent最多归属一个活跃Session<br><b>文件</b>：agent_pool.py' },
+
+    // L5
+    pg: { t:'🗄️ PostgreSQL 16 — 主存储', tags:['P0','数据层'], c:'<b>驱动</b>：asyncpg异步<br><b>数据类型</b>：JSONB(workflow config)·UUID主键·TIMESTAMPTZ·ARRAY<br><b>扩展</b>：pgvector向量检索<br><b>文件</b>：core/database.py' },
+    redis: { t:'⚡ Redis 7 — 缓存与消息', tags:['P1','数据层'], c:'<b>用途</b>：会话状态缓存·Blackboard Pub/Sub·速率限制计数器·语义缓存<br>单例连接池管理。' },
+    mq: { t:'📨 Blackboard — 跨团队消息', tags:['P2','数据层'], c:'<b>机制</b>：基于Redis Pub/Sub的事件广播<br><b>消息类型</b>：task_update·agent_status·hitl_notification·cross_team_request<br><b>文件</b>：services/blackboard.py' },
+
+    // Harness
+    'h-before': { t:'① before_execution — 执行前', tags:['P0','Harness'], c:'<b>流程</b>：_build_prompt(调用M5上下文组装+M8对等消息)→_inject_context(注入Memory+RAG)→_check_token_budget(剩余<1000阻止执行)→_emit(AE_STARTED事件)<br><b>返回</b>：BeforeExecutionResult(prompt/context/token_budget/is_blocked/block_reason)<br><b>三引擎注入点差异</b>：Swarm仅传instruction+user_message·Supervisor含org_role_context+retry_feedback·LangGraph含code_output_required' },
+    'h-after': { t:'② after_execution — 执行后', tags:['P0','Harness'], c:'<b>流程</b>：_extract_files(正则解析代码块→workspace)→_record_tokens(prompt+completion)→_persist_with_retry(记忆持久化·独立DB session·最多2次重试)→_audit_log(结构化审计)→_emit(AE_COMPLETED事件)' },
+    'h-verify': { t:'③ verify — 独立盲审', tags:['P0','Harness'], c:'<b>机制</b>：选非生产者Agent(按reviewed_count最少公平分配)→只给需求+产物(不给思考链→防确认偏差)→返回VerificationResult(passed/score/issues/suggestions)<br><b>drift_detected</b>：需求理解偏差(非代码bug)→回M1重分析' },
+    'h-cleanup': { t:'④ cleanup — 资源清理', tags:['P1','Harness'], c:'<b>会话结束时</b>：清空Token计数器·清除_paused暂停状态·清理会话级资源。' },
+    loop: { t:'🔄 Loop Engine — 错误恢复 (253行)', tags:['P0','Harness'], c:'<b>三分类</b>：TRANSIENT(自动重试→指数退避1s→2s→4s)·CONTENT(四步恢复rollback→feedback→inject→retry)·FATAL(立即HITL)<br><b>限制</b>：MAX_RETRIES=3·相同错误×2提前升级<br><b>文件</b>：loop_engine.py' },
+    observer: { t:'👁️ Observer — 事件系统', tags:['P1','Harness'], c:'<b>EventBus</b>：异步发布/订阅·asyncio.create_task非阻塞<br><b>15种EventType</b>：AE_STARTED/COMPLETED·TASK_CREATED/COMPLETED/FAILED·HITL_REQUESTED/RESUMED·VERIFICATION_PASSED/FAILED·SESSION_STARTED/ENDED·FILES_CHANGED·ERROR_OCCURRED<br><b>持久化</b>：独立DB session·JSONB payload<br><b>文件</b>：observer/events.py+bus.py+persister.py' },
+    safety: { t:'🔒 Security — 安全防护', tags:['P1','Harness'], c:'<b>Prompt Injection</b>：8种正则(ignore previous/system prompt/DAN越狱等)<br><b>PII脱敏</b>：手机号·身份证·API Key·密码·邮箱<br><b>过滤时机</b>：消息进入引擎前(ws.py)<br><b>ApiKeyMiddleware</b>+verify_ws_auth<br><b>Rate Limiter</b>：滑动窗口·120 RPM<br><b>文件</b>：safety_filter.py+core/auth.py+core/rate_limit.py' },
+};
+
+function showDetail(key) {
+    const d = data[key]; if (!d) return;
+    const p = document.getElementById('detailPanel');
+    document.getElementById('detailTitle').textContent = d.t;
+    document.getElementById('detailTags').innerHTML = d.tags.map(t =>
+        '<span class="tag '+ (t==='P0'?'p0':t==='P1'?'p1':'layer-tag') +'">'+t+'</span>').join('');
+    document.getElementById('detailContent').innerHTML = d.c;
+    p.classList.add('active');
+    p.scrollIntoView({ behavior: 'smooth' });
+}
+function closeDetail() { document.getElementById('detailPanel').classList.remove('active'); }
+</script>
+</body>
+</html>

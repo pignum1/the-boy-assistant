@@ -1,0 +1,10 @@
+trigger:
+  keywords: ["架构图", "系统架构", "C4", "微服务架构", "分层架构", "部署架构", "网络拓扑"]
+parameters:
+  - name: diagram_type
+    description: 图表类型 (c4-context/c4-container/microservices/deployment/network)
+    required: false
+  - name: style
+    description: 渲染方式 (mermaid/svg/html)
+    required: false
+    default: mermaid

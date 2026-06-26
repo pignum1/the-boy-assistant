@@ -1,0 +1,47 @@
+erDiagram
+    USER ||--o{ ORDER : "places"
+    ORDER ||--|{ ORDER_ITEM : "contains"
+    ORDER_ITEM }o--|| PRODUCT : "references"
+    ORDER ||--o| PAYMENT : "paid by"
+
+    USER {
+        uuid id PK
+        varchar email UK
+        varchar password_hash
+        varchar display_name
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    ORDER {
+        uuid id PK
+        uuid user_id FK
+        decimal total_amount
+        varchar status
+        timestamptz created_at
+    }
+
+    ORDER_ITEM {
+        uuid id PK
+        uuid order_id FK
+        uuid product_id FK
+        int quantity
+        decimal unit_price
+    }
+
+    PRODUCT {
+        uuid id PK
+        varchar name
+        decimal price
+        int stock
+        boolean is_active
+    }
+
+    PAYMENT {
+        uuid id PK
+        uuid order_id FK
+        decimal amount
+        varchar method
+        varchar status
+        timestamptz paid_at
+    }

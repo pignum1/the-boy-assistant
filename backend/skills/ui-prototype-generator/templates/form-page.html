@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>表单页原型</title>
+<style>
+  :root { --bg-base: #0d1117; --bg-card: #161b22; --border-subtle: rgba(255,255,255,0.06); --border-medium: rgba(255,255,255,0.12); --text-primary: #e6edf3; --text-secondary: #8b949e; --text-muted: #6e7681; --blue-400: #58a6ff; --blue-bg: rgba(56,139,253,0.1); --red-400: #f85149; --red-bg: rgba(248,81,73,0.1); --green-400: #3fb950; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, sans-serif; background: var(--bg-base); color: var(--text-primary); padding: 28px 32px; max-width: 720px; }
+  h1 { font-size: 24px; font-weight: 700; }
+  .form-group { margin-bottom: 20px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+  .required::after { content: " *"; color: var(--red-400); }
+  input, select, textarea { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-medium); background: var(--bg-card); color: var(--text-primary); font-size: 14px; outline: none; transition: border-color 0.15s; }
+  input:focus, select:focus, textarea:focus { border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-bg); }
+  input.error { border-color: var(--red-400); }
+  .error-msg { font-size: 11px; color: var(--red-400); margin-top: 4px; }
+  .help-text { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .btn { padding: 10px 24px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-primary { background: var(--blue-400); color: #fff; }
+  .btn-secondary { background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-medium); }
+  .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
+</style>
+</head>
+<body>
+  <h1>新增记录</h1>
+  <p style="color:var(--text-muted);font-size:13px;margin:4px 0 24px">填写以下信息创建新记录</p>
+
+  <div class="form-row">
+    <div class="form-group"><label class="required">名称</label><input placeholder="输入名称" /><div class="error-msg"></div></div>
+    <div class="form-group"><label>分类</label><select><option>请选择分类</option><option>分类A</option><option>分类B</option></select></div>
+  </div>
+  <div class="form-group"><label class="required">邮箱</label><input type="email" placeholder="user@example.com" /><div class="help-text">用于发送通知</div></div>
+  <div class="form-group"><label>描述</label><textarea rows="4" placeholder="详细描述..."></textarea></div>
+  <div class="form-group"><label>附件</label><div style="border:2px dashed var(--border-medium);border-radius:10px;padding:32px;text-align:center;cursor:pointer;background:var(--bg-card)"><div style="font-size:13px;color:var(--text-muted)">点击或拖拽文件到此处</div></div></div>
+
+  <div class="actions">
+    <button class="btn btn-secondary">取消</button>
+    <button class="btn btn-primary">保存</button>
+  </div>
+</body>
+</html>
