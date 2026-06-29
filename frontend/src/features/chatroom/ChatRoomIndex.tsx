@@ -62,5 +62,6 @@ export function ChatRoomIndex({ sessionId, teamId }: Props) {
   }
 
   // 统一路径：所有模式使用 ChatRoomView + reducer 架构
-  return <ChatRoomView sessionId={sessionId} teamId={teamId} />;
+  // key={sessionId} 确保切换会话时组件完全重新挂载（重置 useReducer state）
+  return <ChatRoomView key={sessionId} sessionId={sessionId} teamId={teamId} />;
 }

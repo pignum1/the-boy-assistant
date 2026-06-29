@@ -53,8 +53,12 @@ export function DrawerHost({ openDrawers, onClose, onCloseAll, onWidthChange, ch
           background: 'rgba(0,0,0,0.08)',
         }}
       />
-      {/* 抽屉堆叠 */}
-      <div style={{ display: 'flex', height: '100%', position: 'relative', zIndex: 10 }}>
+      {/* 抽屉堆叠：fixed 固定在右侧，宽度基于视口（vw），避免百分比相对
+          auto 宽度父容器导致的循环收缩（drawer 永远塌缩到 min-width） */}
+      <div style={{
+        display: 'flex', position: 'fixed', top: 0, right: 0, bottom: 0,
+        height: '100%', zIndex: 10,
+      }}>
         {openDrawers.map((drawer, i) => (
           <DrawerPanel
             key={drawer.kind}
@@ -123,8 +127,9 @@ function DrawerPanel({
   return (
     <div
       style={{
-        width: `${width}%`,
+        width: `${width}vw`,
         minWidth: 280,
+        maxWidth: '80vw',
         height: '100%',
         borderLeft: '1px solid var(--border-subtle)',
         background: 'var(--bg-elevated)',
@@ -132,6 +137,7 @@ function DrawerPanel({
         flexDirection: 'column',
         position: 'relative',
         userSelect: dragging ? 'none' : 'auto',
+        boxShadow: '-8px 0 24px rgba(0,0,0,0.12)',
       }}
     >
       {/* 拖拽手柄 */}

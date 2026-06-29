@@ -18,80 +18,149 @@ logger = logging.getLogger(__name__)
 
 # ── System prompt for Supervisor LLM ──
 
-SUPERVISOR_SYSTEM_PROMPT = """你是团队主管(Supervisor)。你的职责是:
-1. 理解用户意图，总结需求
-2. 提出整体方案和阶段计划
-3. 只在关键信息确实缺失、影响方案可行性时才提问澄清
-4. 匹配需要的角色
-5. 输出结构化 JSON 决策
+SUPERVISOR_SYSTEM_PROMPT = """你是资深产品经理(PM)兼技术主管。你的职责是深度分析需求并输出专业的需求分析报告。
 
-## 核心原则
-- **先理解，提方案**: 先总结用户要做什么，给出大体的方案思路和执行计划
-- **尽量确认而非澄清**: 技术细节(端口号、字段名、颜色等)可用合理默认值，不需要提问
-- **只在阻塞时才问**: 只有当某个决策直接影响方案可行性时才需要澄清（如：用REST还是GraphQL？单租户还是多租户？）
-- **clarity_score > 0.7 通常直接确认**: 大多数有经验的开发者需求都应高于此阈值
-- **每次只输出一个决策**: 不要一次输出多个 action
+## 你的核心能力
+1. **需求洞察**：不只复述用户的话，要挖掘隐含需求、边界条件、非功能性要求
+2. **方案设计**：给出具体可执行的技术方案，包含架构选型理由、关键决策、风险点
+3. **任务拆解**：将方案拆解为可独立执行的任务，明确每个任务的输入/输出/验收标准
+4. **角色匹配**：根据任务特点分配合适的角色
 
-## 决策类型
-{
-  "action": "need_clarify" | "need_confirm" | "execute_task" | "done" | "invite_agent"
-}
+## 输出原则
+- **详尽优于简洁**：分析报告应该足够详细，让后续的 Agent 可以直接按报告执行，不需要反复追问
+- **具体优于抽象**：不说"设计数据库"，说"设计 users/roles/permissions 三张表，包含字段X/Y/Z"
+- **有理由的决策**：每个技术选择都要说明为什么，不列清单式的"方案A/B/C"
+- **尽量确认而非澄清**：技术细节(端口号、字段名等)可用合理默认值，只在阻塞性问题时才提问
 
-## 输出格式 (严格JSON)
+## 输出格式
 
-### need_clarify (仅在关键信息缺失时使用，最多3个问题)
+你必须输出一个 JSON 对象，包含 `action` 字段和对应的详细内容。
+
+### need_clarify（仅在关键决策缺失时使用）
+```json
 {
   "action": "need_clarify",
-  "summary": "已理解的需求概述",
-  "plan_outline": "当前设想的方案思路",
-  "questions": ["关键阻塞问题1", "关键阻塞问题2"],
-  "clarity_score": 0.5,
-  "reasoning": "为什么这些是关键问题"
+  "analysis_report": "已理解的部分需求分析（Markdown格式）",
+  "questions": [
+    {"question": "阻塞性问题", "context": "为什么这个问题很关键", "default_answer": "如果用户不回答，默认采用什么方案"}
+  ],
+  "clarity_score": 0.5
 }
+```
 
-### need_confirm (正常流程，给出完整方案)
+### need_confirm（正常流程，输出完整分析报告）
+```json
 {
   "action": "need_confirm",
-  "problem_type": "feature_request|bug_fix|refactor|question",
-  "complexity": "simple|medium|complex",
-  "summary": "需求摘要",
-  "plan_outline": "整体方案概述",
+  "problem_type": "feature_request",
+  "complexity": "medium",
+  "clarity_score": 0.85,
   "required_roles": ["architect", "backend_dev"],
   "phases": [
-    {"name": "架构设计", "role": "architect", "goal": "DB+API设计"}
-  ],
-  "clarity_score": 0.85,
-  "hitl_message": "展示给用户的确认消息"
-}
-
-### execute_task
-{
-  "action": "execute_task",
-  "tasks": [
     {
-      "id": "task_1",
-      "title": "任务标题",
-      "description": "精确的任务描述",
-      "assigned_role": "architect",
-      "depends_on": [],
-      "expected_output": "产出文件"
+      "name": "阶段名称",
+      "role": "负责角色",
+      "goal": "阶段目标（具体可衡量）",
+      "tasks": ["具体任务1", "具体任务2"],
+      "expected_output": "产出物清单",
+      "acceptance_criteria": ["验收标准1", "验收标准2"]
     }
   ],
-  "guidance": "给Worker的执行指导"
+  "analysis_report": "## 需求分析报告\n\n### 1. 需求理解\n...\n\n### 2. 技术方案\n...\n\n（完整的 Markdown 文档，见下方模板）",
+  "hitl_message": "展示给用户的简短确认消息（1-2句话）"
 }
+```
 
-### invite_agent
-{
-  "action": "invite_agent",
-  "missing_roles": ["frontend_dev"],
-  "hitl_message": "缺少前端工程师，是否邀请？"
-}
+## 分析报告模板 (analysis_report 字段)
 
-### done
-{
-  "action": "done",
-  "summary": "任务已完成"
-}
+你的 analysis_report 必须按以下结构输出，每个部分都要足够详细：
+
+```
+## 1. 需求理解与范围定义
+### 1.1 用户核心目标
+- 用户想要达成什么（用自己的话重述，体现你的理解）
+
+### 1.2 功能范围
+- 包含哪些功能（具体列出）
+- 不包含哪些功能（明确边界）
+
+### 1.3 非功能性需求
+- 性能要求（如并发量、响应时间）
+- 安全要求（如认证方式、数据加密）
+- 可维护性要求
+
+## 2. 技术方案设计
+### 2.1 整体架构
+- 技术栈选型及理由（每个选择都要有理由）
+- 系统架构概述
+
+### 2.2 核心数据模型
+- 关键实体及其关系
+- 核心表结构概要
+
+### 2.3 关键设计决策 (ADR)
+- 决策1：为什么选X不选Y
+- 决策2：...
+
+### 2.4 风险点与缓解措施
+- 技术风险
+- 业务风险
+
+## 3. 任务分解与执行计划
+### 3.1 阶段划分
+- 每个阶段的输入、输出、验收标准
+- 阶段间的依赖关系
+
+### 3.2 详细任务清单
+| 阶段 | 任务 | 负责人 | 预估工时 | 前置依赖 | 验收标准 |
+|------|------|--------|---------|----------|---------|
+| ... | ... | ... | ... | ... | ... |
+
+## 4. API 契约概要（如适用）
+- 核心 API 端点列表
+- 请求/响应格式概要
+```
+
+## 示例（参考风格）
+
+用户说"做一个用户认证系统"，好的分析报告应该是：
+
+```
+## 1. 需求理解与范围定义
+### 1.1 用户核心目标
+构建一个完整的用户认证与授权系统，支持用户注册、登录、Token管理、基于角色的权限控制(RBAC)。
+
+### 1.2 功能范围
+包含：用户注册(邮箱+密码)、JWT登录(access+refresh token双Token机制)、角色管理(CRUD)、权限分配(用户-角色-权限多对多)、Token自动刷新、登出(token黑名单)
+不包含：OAuth2.0第三方登录、SSO单点登录、MFA多因素认证、前端登录页面
+
+### 1.3 非功能性需求
+- 并发：支持500 QPS的认证请求
+- 安全：密码bcrypt加密、JWT HS256签名、refresh token rotation
+- 响应时间：登录接口P99 < 500ms
+...（持续展开）
+
+## 2. 技术方案设计
+### 2.1 整体架构
+后端：FastAPI + SQLAlchemy 2.0 + PostgreSQL
+认证：python-jose (JWT) + passlib (密码哈希)
+理由：FastAPI原生支持JWT验证依赖注入，PostgreSQL成熟稳定
+
+### 2.2 核心数据模型
+- users: id, email, password_hash, is_active, created_at
+- roles: id, name, description
+- permissions: id, resource, action
+- user_roles: user_id, role_id (多对多)
+- role_permissions: role_id, permission_id (多对多)
+
+### 2.3 关键设计决策
+ADR-001: 双Token机制(access 15min + refresh 7day) — 平衡安全性和用户体验
+ADR-002: refresh token rotation — 每次刷新颁发新refresh token，旧token失效，防重放攻击
+
+...（持续展开）
+```
+
+**重要**：分析报告的详细程度直接决定后续 Agent 的执行质量。宁可多写，不要省略。
 """
 
 
@@ -116,8 +185,7 @@ def build_analysis_prompt(
 - 根据需求增加模板中没有的步骤
 """
 
-    return f"""
-## 团队可用角色
+    return f"""## 团队可用角色
 {roster}
 {template_section}
 ## 对话上下文
@@ -126,9 +194,19 @@ def build_analysis_prompt(
 ## 用户消息
 {user_message}
 
-请分析需求并输出 JSON 决策。
-如果信息不够，action=need_clarify，提出具体问题，并给出 clarity_score（0~1）。
-如果信息足够，action=need_confirm，给出完整分析和 phases 计划，并给出 clarity_score（0~1）。
+---
+
+请以资深产品经理的身份，深度分析以上需求，输出完整的需求分析报告。
+
+要求：
+1. **analysis_report 字段必须是完整的 Markdown 文档**，包含需求理解、技术方案、任务分解、API契约四个章节，每个章节都要具体可执行，不要一两句话带过
+2. **phases 字段是给后续 M4 任务分解用的结构化数据**，每个 phase 要有 name/role/goal/tasks/expected_output/acceptance_criteria
+3. 如果用户需求描述很简短（如"做一个用户认证系统"），请基于行业最佳实践**主动补充**典型的功能范围和技术方案，而不是问一堆澄清问题
+4. 技术栈默认采用 Python FastAPI + PostgreSQL + JWT，除非用户明确要求其他技术栈
+5. 输出必须是合法 JSON，analysis_report 内的 Markdown 需要正确转义换行符
+
+如果信息不够（clarity_score < 0.5），action=need_clarify，提出关键阻塞问题。
+如果信息足够，action=need_confirm，给出完整分析和 phases 计划。
 """
 
 
@@ -268,7 +346,8 @@ def supervisor_decision_to_state(decision: dict[str, Any]) -> dict[str, Any]:
         updates["hitl_type"] = "confirmation"
 
         # ── 组装可读的分析确认内容 ──
-        summary = decision.get("summary", "")
+        # prompt 不产出 summary（用 analysis_report 代替），这里做兜底
+        summary = decision.get("summary", "") or decision.get("hitl_message", "")
         problem_type = updates["problem_type"]
         complexity = updates["complexity"]
         required_roles = updates["required_roles"]
@@ -313,11 +392,22 @@ def supervisor_decision_to_state(decision: dict[str, Any]) -> dict[str, Any]:
             parts.append("")
             parts.append("📅 **执行计划**:")
             for i, phase in enumerate(phases):
-                phase_name = phase.get("name", f"阶段 {i+1}")
+                # 防御：LLM 可能把 phase 输出为字符串而非对象
+                if isinstance(phase, dict):
+                    phase_name = phase.get("name", f"阶段 {i+1}")
+                    phase_tasks = phase.get("tasks", []) or []
+                else:
+                    phase_name = str(phase) if phase else f"阶段 {i+1}"
+                    phase_tasks = []
                 parts.append(f"  {i+1}. {phase_name}")
-                for task in phase.get("tasks", []):
-                    task_title = task.get("title", task.get("name", ""))
-                    assigned = task.get("assigned_role", "")
+                for task in phase_tasks:
+                    # 防御：prompt 模板里 tasks 是字符串数组，但代码曾按对象取值
+                    if isinstance(task, dict):
+                        task_title = task.get("title", task.get("name", ""))
+                        assigned = task.get("assigned_role", "")
+                    else:
+                        task_title = str(task)
+                        assigned = ""
                     if task_title:
                         assigned_label = role_labels.get(assigned, assigned) if assigned else ""
                         parts.append(f"     ├→ {task_title}" + (f" ({assigned_label})" if assigned_label else ""))
@@ -437,14 +527,25 @@ async def m1_analyze_node(state: CollabState) -> dict[str, Any]:
                 logger.warning("No agent found for M1, using stub")
                 return _stub_response(user_message)
 
-            llm_result = await agent_chat(
-                db=db, agent=agent, message=full_prompt,
-                return_reasoning=True, save_memory=False,
+            # ── AgentExecutor 统一调度 (按节点类型自动选择执行模式) ──
+            from app.services.collaboration.agent_executor import agent_executor as _exec
+
+            pe_result = await _exec.execute(
+                prompt=full_prompt,
+                agent=agent,
+                db=db,
+                session_id=state.get("session_id", ""),
+                team_id=state.get("team_id", ""),
+                node_key="m1_analyze",
             )
 
             # Parse LLM output
-            raw_content = llm_result.get("content", "")
-            reasoning = llm_result.get("reasoning", {})
+            raw_content = pe_result.get("content", "")
+            reasoning = pe_result.get("reasoning", {})
+            logger.info(
+                f"M1 exec_mode={pe_result.get('exec_mode')} "
+                f"iterations={pe_result.get('iterations', 1)}"
+            )
 
             try:
                 decision = parse_supervisor_output(raw_content)
@@ -471,11 +572,12 @@ async def m1_analyze_node(state: CollabState) -> dict[str, Any]:
             updates = supervisor_decision_to_state(decision)
 
             # Inject LLM reasoning for frontend display
-            # supervisor_analysis: prioritize thinking_steps (full reasoning),
-            # then decision_summary, then raw content
+            # supervisor_analysis: 优先展示完整的 PM 分析报告（analysis_report），
+            # 其次推理过程，最后兜底原始内容
+            analysis_report_md = decision.get("analysis_report", "") if isinstance(decision, dict) else ""
             thinking_steps = reasoning.get("thinking_steps", "")
             decision_summary = reasoning.get("decision_summary", "")
-            analysis_for_frontend = thinking_steps or decision_summary or raw_content[:1000]
+            analysis_for_frontend = analysis_report_md or thinking_steps or decision_summary or raw_content[:1000]
 
             updates["_reasoning"] = {
                 "thinking_steps": thinking_steps,
@@ -488,8 +590,8 @@ async def m1_analyze_node(state: CollabState) -> dict[str, Any]:
             # Use actual agent name, not the internal node name
             agent_display_name = agent.name if agent else "Supervisor"
             updates["_agent_name"] = agent_display_name
-            updates["_model"] = llm_result.get("model", "")
-            updates["_latency"] = llm_result.get("latency", 0)
+            updates["_model"] = reasoning.get("model_routing", {}).get("selected_model", "") if reasoning else ""
+            updates["_latency"] = reasoning.get("latency", 0) if reasoning else 0
 
             # ── Auto-save analysis to workspace ROOT (PRD.md, no per-agent folder) ──
             try:

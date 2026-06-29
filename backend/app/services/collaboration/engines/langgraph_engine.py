@@ -114,14 +114,20 @@ async def _execute_agent_node(
         if isinstance(node.config, dict):
             node_timeout = int(node.config.get("timeout", 600))
 
-        # 流式执行：逐 token 推送
+        # 检查是否需要非 default 执行模式
+        node_config = node.config if isinstance(node.config, dict) else {}
+        exec_mode = node_config.get("execution_mode", "")
+        use_executor = exec_mode in ("plan_execute", "react")
+
+        # 流式执行：逐 token 推送（仅 single_pass 模式用流式）
         content_parts: list[str] = []
-        try:
-            from app.services.agent_chat import agent_chat_stream
-            stream = agent_chat_stream(
-                db=db, agent=agent, message=prompt,
-                team_id=team_id, session_id=session_id,
-            )
+        if not use_executor:
+            try:
+                from app.services.agent_chat import agent_chat_stream
+                stream = agent_chat_stream(
+                    db=db, agent=agent, message=prompt,
+                    team_id=team_id, session_id=session_id,
+                )
             async def _stream_with_timeout():
                 async for token in stream:
                     content_parts.append(token)
@@ -156,6 +162,26 @@ async def _execute_agent_node(
             latency_ms = int((_t.monotonic() - t_start) * 1000)
             content = (result.get("content") or "").strip()
             reasoning = result.get("reasoning", {}) or {}
+
+        else:
+            # ── AgentExecutor 模式 (plan_execute / react) ──
+            from app.services.collaboration.agent_executor import agent_executor as _exec
+
+            exec_result = await asyncio.wait_for(
+                _exec.execute(
+                    prompt=prompt, agent=agent, db=db,
+                    session_id=session_id, team_id=team_id,
+                    node_key=node_key, node_config=node_config,
+                ),
+                timeout=node_timeout,
+            )
+            latency_ms = int((_t.monotonic() - t_start) * 1000)
+            content = (exec_result.get("content") or "").strip()
+            reasoning = exec_result.get("reasoning", {}) or {}
+            logger.info(
+                f"LangGraph node [{label}] exec_mode={exec_result.get('exec_mode')} "
+                f"iterations={exec_result.get('iterations', 1)}"
+            )
 
         artifacts[nid] = content
 

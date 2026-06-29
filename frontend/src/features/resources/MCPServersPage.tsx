@@ -1130,8 +1130,8 @@ function MCPServerPanel({
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder={
                     transport === 'sse'
-                      ? 'http://localhost:8000/sse'
-                      : 'http://localhost:8000/mcp'
+                      ? '/sse'
+                      : '/mcp'
                   }
                 />
               </div>

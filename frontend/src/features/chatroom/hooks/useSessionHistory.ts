@@ -206,8 +206,10 @@ function deriveExtras(
     if (source && META_PHASE_IDS.has(source)) {
       isMultiAgent = true;
     }
-    if ((source === 'm6_execute' || source === 'langgraph') && taskId) {
-      // 这是一个 worker 完成的 task
+    // worker 完成的 task：source 实际是 m6_execute_worker（旧代码只匹配 m6_execute，
+    // 导致 reload 后 workPlan 永远为空、抽屉无内容）。用 startsWith 兼容 m6_execute* 全家桶。
+    const isWorkerDone = !!source && (source.startsWith('m6_execute') || source === 'langgraph');
+    if (isWorkerDone && taskId) {
       const agentName = (meta.agent as string) || m.agent_name || 'Worker';
       const title = (meta.task_title as string) || taskId;
       if (!tasks[taskId]) {
@@ -262,6 +264,8 @@ function deriveExtras(
     }
   }
 
+  // 从 worker 完成消息派生粗略单阶段计划（兜底）；
+  // 完整任务计划由 useSessionHistory 里的 /tasks 接口还原（见 load()）。
   const workPlan: WorkPlan | null = totalTasks > 0 ? {
     phases: [{
       id: 'phase-1',
@@ -300,6 +304,47 @@ export function useSessionHistory(
       const items = raw.map(toTimelineItem).filter((x): x is TimelineItem => x !== null);
       if (items.length === 0) return;
       const extras = deriveExtras(raw, items);
+
+      // 1b. 拉取持久化的会话任务（SessionTask），还原完整任务计划。
+      // 优先级高于 deriveExtras 从 worker 消息派生的粗略计划；缺失时回退。
+      try {
+        const tasksResp = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/tasks`);
+        if (!cancelled && tasksResp.ok) {
+          const tasksData = await tasksResp.json();
+          const persisted = (tasksData.tasks || []) as Array<{
+            id: string; title: string; status: string; assigned_agent_name?: string;
+          }>;
+          if (persisted.length > 0) {
+            const planTasks: Record<string, WorkTask> = {};
+            const taskIds: string[] = [];
+            for (const t of persisted) {
+              const agent = t.assigned_agent_name || 'Worker';
+              planTasks[t.id] = {
+                id: t.id,
+                phaseId: 'phase-tasks',
+                name: t.title || t.id,
+                agentId: agent,
+                agentName: agent,
+                agentEmoji: inferEmoji(agent),
+                dependsOn: [],
+                status: (t.status === 'done' || t.status === 'completed') ? 'done' : 'pending',
+                version: 1,
+                artifactIds: [],
+              };
+              taskIds.push(t.id);
+            }
+            const doneCount = Object.values(planTasks).filter(x => x.status === 'done').length;
+            extras.workPlan = {
+              phases: [{ id: 'phase-tasks', name: '协作任务', status: 'done', taskIds }],
+              tasks: planTasks,
+              totalTasks: taskIds.length,
+              doneTasks: doneCount,
+            };
+          }
+        }
+      } catch {
+        // 任务列表加载失败时回退到 deriveExtras 的结果
+      }
 
       // 2. 加载 workspace 产物文件 + workspace path
       let workspacePath: string | undefined;

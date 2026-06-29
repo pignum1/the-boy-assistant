@@ -10,7 +10,7 @@ interface Props {
   onClear: () => void;
 }
 
-const API = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta as any).env?.VITE_API_URL || '';
 
 export function DirectoryPicker({ selectedPath, onSelect, onClear }: Props) {
   const [open, setOpen] = useState(false);

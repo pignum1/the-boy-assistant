@@ -125,10 +125,16 @@ async def m6_execute_worker_node(state: CollabState) -> dict[str, Any]:
                 }
 
             t_start = time.monotonic()
-            llm_result = await agent_chat(
-                db=db, agent=agent, message=prompt,
-                return_reasoning=True, save_memory=False,
-                session_id=session_id, team_id=team_id,
+            # ── AgentExecutor 统一调度 (M6 Worker 默认用 ReAct) ──
+            from app.services.collaboration.agent_executor import agent_executor as _exec
+
+            llm_result = await _exec.execute(
+                prompt=prompt,
+                agent=agent,
+                db=db,
+                session_id=session_id,
+                team_id=team_id,
+                node_key="m6_execute_worker",
             )
             latency_s = time.monotonic() - t_start
 

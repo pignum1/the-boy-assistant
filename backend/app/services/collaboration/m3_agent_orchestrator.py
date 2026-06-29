@@ -86,8 +86,11 @@ def check_agent_availability(
         for agent in team_agents:
             if agent.get("agent_id") in used_agents:
                 continue
-            agent_role = agent.get("role", "")
-            if _role_matches(role, agent_role):
+            # role 字段常为占位符"成员"或为空，因此同时尝试用 role 和 name 匹配
+            # （agent 名称编码了角色，如"架构师-Agent"）
+            agent_role = agent.get("role") or ""
+            agent_name = agent.get("name") or ""
+            if _role_matches(role, agent_role) or _role_matches(role, agent_name):
                 matched = agent
                 used_agents.add(agent.get("agent_id"))
                 break
@@ -131,8 +134,26 @@ async def m3_orchestrate_node(state: CollabState) -> dict[str, Any]:
 
     assignments, missing = check_agent_availability(required_roles, team_agents)
 
-    if missing:
-        logger.info(f"M3: missing agents for roles: {missing}")
+    # 容错：M1 输出的 role 标识不稳定（中文名/role key/非标准英文如 deployment_ops），
+    # 精确匹配常失败。只要团队有 Agent，就把未匹配角色用剩余可用 Agent 兜底分配，
+    # 避免因角色命名不一致卡死整个 Supervisor 执行链。M6 Worker 另有"任意 Agent"兜底。
+    if missing and team_agents:
+        used_ids = {info.get("agent_id") for info in assignments.values()}
+        for role in list(missing):
+            fallback = next(
+                (a for a in team_agents if a.get("agent_id") not in used_ids),
+                None,
+            )
+            if fallback:
+                assignments[role] = fallback
+                used_ids.add(fallback.get("agent_id"))
+                missing.remove(role)
+        if missing:
+            logger.warning(f"M3: unmatched roles (will use M6 fallback): {missing}")
+
+    # 仅当团队完全没有任何可用 Agent 时才阻塞邀请
+    if missing and not assignments and not team_agents:
+        logger.info(f"M3: no agents at all, missing roles: {missing}")
         return {
             "status": "clarifying",
             "agent_assignments": assignments,
@@ -145,14 +166,14 @@ async def m3_orchestrate_node(state: CollabState) -> dict[str, Any]:
                 {"label": "⏭ 跳过缺失角色", "value": "skip"},
             ],
             "_content": generate_missing_agent_message(missing),
-            "_agent_name": team_agents[0].get("name", "Supervisor") if team_agents else "Supervisor",
+            "_agent_name": "Supervisor",
         }
 
-    logger.info(f"M3: all agents available, assignments: {list(assignments.keys())}")
+    logger.info(f"M3: agents assigned, assignments: {list(assignments.keys())}")
     return {
         "status": "executing",
         "agent_assignments": assignments,
-        "missing_roles": [],
+        "missing_roles": missing,
         "_content": f"✅ 已分配 {len(assignments)} 个角色，开始执行任务。",
         "_agent_name": team_agents[0].get("name", "Supervisor") if team_agents else "Supervisor",
     }

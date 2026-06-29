@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 
-const API_BASE = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || '';
 
 export interface TeamMember {
   agentId: string;

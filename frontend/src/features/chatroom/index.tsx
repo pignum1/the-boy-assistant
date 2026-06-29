@@ -76,7 +76,7 @@ function TaskView({ sessionId, taskId, teamId }: { sessionId: string; taskId: st
   useEffect(() => {
     const fetchTask = async () => {
       try {
-        const api = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || 'http://localhost:8000';
+        const api = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || '';
         const res = await fetch(`${api}/api/v1/tasks/${taskId}`);
         if (res.ok) {
           const task = await res.json();

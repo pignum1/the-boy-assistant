@@ -463,7 +463,7 @@ function TaskCardBubble({ msg, taskData }: {
             const task = taskData.tasks.find(t => t.id === taskId);
             if (!task) return;
             const newStatus = task.status === 'done' ? 'pending' : 'done';
-            const API = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
+            const API = (import.meta as any).env?.VITE_API_URL || '';
             const sessionId = new URLSearchParams(window.location.search).get('session') || '';
             if (!sessionId) return;
             try {

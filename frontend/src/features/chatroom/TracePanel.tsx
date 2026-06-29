@@ -36,7 +36,7 @@ interface ContextData {
   }>;
 }
 
-const API_BASE = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || '';
 
 function msgToTraceEntry(msg: ContextData['messages'] extends Array<infer T> ? T : never): TraceEntry | null {
   const meta = (msg as { metadata?: Record<string, unknown> }).metadata || {};

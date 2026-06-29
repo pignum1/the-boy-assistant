@@ -6,7 +6,7 @@ interface Task {
   priority: string; assigned_agent_name?: string; depends_on?: string[];
 }
 
-const API = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta as any).env?.VITE_API_URL || '';
 
 export function TaskPanel({ sessionId }: { sessionId: string }) {
   const [tasks, setTasks] = useState<Task[]>([]);

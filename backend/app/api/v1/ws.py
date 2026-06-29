@@ -410,9 +410,32 @@ async def _handle_collab_chat(
                         "latency": payload.get("latency", 0),
                     }
 
-            elif data_type == "hitl_notification":
-                # HITL 通知也需要立即持久化（后端 swarm_engine 已保存，这里只是为了保险）
-                pass
+            elif data_type == "hitl_notification" or data_type == "hitl_request":
+                # 持久化 HITL 卡片数据到消息历史
+                payload = data.get("payload", {})
+                try:
+                    hitl_msg = payload.get("message", "")
+                    combined = f"⚠️ **需要您的决策**\n\n{hitl_msg}"
+                    meta = {
+                        "role": "system",
+                        "hitl_notification": True,
+                        "hitl_type": payload.get("type", "confirmation"),
+                        "hitl_message": hitl_msg,
+                        "hitl_options": payload.get("options", []),
+                    }
+                    await mm.save_memory(
+                        level=MemoryLevel.context,
+                        content=combined,
+                        type=MemoryType.context,
+                        team_id=session.team_id if session else None,
+                        session_id=session_id,
+                        importance=0.5,
+                        created_by="system",
+                        metadata_=meta,
+                    )
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to persist HITL notification: {e}")
 
         # 通过 router 分流到对应引擎（swarm / supervisor / langgraph）
         try:
@@ -566,6 +589,33 @@ async def _handle_hitl_resume(
                         await db.commit()
                     except Exception as e:
                         logger.warning(f"Failed to save agent message during resume: {e}")
+
+            elif dtype in ("hitl_request", "hitl_notification"):
+                # 持久化 HITL 卡片数据，确保页面刷新后能重建 HITL 卡片
+                p = data.get("payload", {})
+                try:
+                    hitl_msg = p.get("message", "")
+                    combined = f"⚠️ **需要您的决策**\n\n{hitl_msg}"
+                    meta = {
+                        "role": "system",
+                        "hitl_notification": True,
+                        "hitl_type": p.get("type", "confirmation"),
+                        "hitl_message": hitl_msg,
+                        "hitl_options": p.get("options", []),
+                    }
+                    await mm.save_memory(
+                        level=MemoryLevel.context,
+                        content=combined,
+                        type=MemoryType.context,
+                        team_id=session.team_id,
+                        session_id=session_id,
+                        importance=0.5,
+                        created_by="system",
+                        metadata_=meta,
+                    )
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to save HITL notification: {e}")
 
             elif dtype == "reasoning_complete":
                 p = data.get("payload", {})

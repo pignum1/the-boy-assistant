@@ -868,7 +868,7 @@ export function useSessionEvents({ sessionId, onMessage, maxRetries = 5 }: UseSe
 
     const loadHistory = async () => {
       try {
-        const API = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || 'http://localhost:8000';
+        const API = (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL || '';
         const res = await fetch(`${API}/api/v1/sessions/${sessionId}/messages?limit=100`);
         if (res.ok) {
           const data = await res.json();
