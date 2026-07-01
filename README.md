@@ -31,6 +31,25 @@ The Boy Assistant 是一个**企业级 AI Multi-Agent 协作平台**，提供三
 
 ---
 
+## 平台演示
+
+### 工作台
+<img src="docs/images/demo-00-dashboard.png" width="100%" />
+
+### 多 Agent 协作讨论中
+<img src="docs/images/demo-01-chat-thinking.png" width="100%" />
+
+### Agent 回复（含执行模式标签 + 思考过程）
+<img src="docs/images/demo-02-chat-results.png" width="100%" />
+
+### LangFuse 全链路追踪 — Traces 视图
+<img src="docs/images/demo-03-langfuse-traces.png" width="100%" />
+
+### LangFuse 会话分组 — Sessions 视图
+<img src="docs/images/demo-04-langfuse-sessions.png" width="100%" />
+
+---
+
 ## 系统架构
 
 ```
