@@ -16,6 +16,8 @@ The Boy Assistant 是一个**三模式企业级多 Agent 协作平台**，提供
 | 能力 | 说明 |
 |------|------|
 | **三模式协作** | Swarm（群聊）/ Supervisor（主管）/ LangGraph（工作流），根据团队需求切换 |
+| **七种执行模式** | single_pass / chain_of_thought / plan_execute / react / rewoo / reflexion / self_consistency |
+| **全链路可观测** | LangFuse 自部署 — Traces / Spans / Generations 三层追踪 + Scores 评分 + 告警 |
 | **智能委派** | 基于组织层级树的自动委派、审核、升级链 |
 | **HITL 人机协作** | 三级检测 + 状态机卡片 + 永不禁用输入框 |
 | **幻觉对抗** | M7 独立盲审 → drift_detected → 回 M1 重分析 |
@@ -528,7 +530,32 @@ Harness._build_prompt 的 6 层组装链：
 
 ---
 
-*继续下一章...*
+## 第 5.5 章：Agent 执行模式
+
+> 详细设计文档：`docs/agent-execution-modes.md`  
+> 对应架构图：`docs/images/07-Agent执行模式.html`
+
+Agent 的 `execution_mode` 字段决定其推理策略。编排层不干预 Agent 怎么思考 —— 仅 `agent_executor.py` 读取该字段并路由到对应执行器。
+
+### 七种模式概览
+
+| 模式 | 常量 | 适用场景 | Span 结构 |
+|------|------|---------|----------|
+| **单次调用** | `single_pass` | 简单问答 | 1 span → 1 generation |
+| **思维链** | `chain_of_thought` | 复杂推理 | 1 span → 1 generation |
+| **规划执行** | `plan_execute` | 分阶段规划 | 1 span → 3 phase spans → 3 generations |
+| **ReAct** | `react` | 工具调用 | 1 span → N iter spans → 1-2N generations |
+| **ReWOO** | `rewoo` | 并行工具执行 | 1 span → 3 phase spans → N generations |
+| **Reflexion** | `reflexion` | 自我纠错 | 1 span → critique/redo spans → 2R-1 generations |
+| **自一致性** | `self_consistency` | 多方案对比 | 1 span → sampling+merge spans → 4 generations |
+
+### 模式选择
+
+模式仅由 Agent 的 `execution_mode` 字段决定，三引擎（Swarm/Supervisor/LangGraph）统一通过 `AgentExecutor.execute()` 调度，`node_key` 仅作日志标识。
+
+所有模式自动集成 LangFuse 追踪 — span 名称格式为 `[{exec_mode}] {agent_name} ({role})`，输入输出和元数据完整记录。
+
+---
 
 ## 第 6 章：异常处理与幻觉对抗
 
@@ -1019,7 +1046,18 @@ drift_detected → 清除 task_dag + artifacts → M1 重分析 → M2 重澄清
 
 ---
 
-*文档对应 6 张架构图（`docs/架构图-v5-wip/`），基于 v5.0 代码生成，最后更新：2026-06-26*
+*文档对应 8 张架构图（`docs/架构图-v5-wip/`），基于 v5.0 代码生成，最后更新：2026-07-01*
+
+| 编号 | 架构图 | 文件 |
+|------|--------|------|
+| 01 | DDD 领域全景 | `01-DDD领域全景.html` |
+| 02 | 五层技术架构 | `02-五层技术架构.html` |
+| 03 | Supervisor 决策流程 | `03-Supervisor决策流程.html` |
+| 04 | Agent 生命周期与 Harness | `04-Agent生命周期与Harness.html` |
+| 05 | Loop Engine 与异常处理 | `05-LoopEngine与异常处理.html` |
+| 06 | 通信与数据流 | `06-通信与数据流.html` |
+| 07 | **Agent 执行模式** | `07-Agent执行模式.html` |
+| 08 | **可观测性全链路** | `08-可观测性全链路.html` |
 
 ---
 
@@ -1141,71 +1179,77 @@ drift_detected → 清除 task_dag + artifacts → M1 重分析 → M2 重澄清
 
 ---
 
-## 第 11 章：可观测性
+## 第 11 章：可观测性（LangFuse 全链路追踪）
 
-### 11.1 日志 (Logging)
+> 详细设计文档：`docs/monitoring-observability-module.md`
 
-**格式**：Python logging 模块，结构化键值对日志。
+### 11.1 架构概览
+
+基于 LangFuse v3.202.1 自部署，Python SDK v4.12 + OpenTelemetry OTLP 上报。三层元数据结构：**Trace**（会话/消息）→ **Span**（Agent 执行）→ **Generation**（LLM 调用）。
 
 ```
-harness.audit | session=61dac2d5 agent=后端工程师-Agent node=backend_dev model=deepseek-v4-flash latency=13200ms tokens=4521
+Backend: create_trace → span → generation
+              │           │         │
+              ▼           ▼         ▼
+         OTLP HTTP → LangFuse Web :3000 → Redis Queue → Worker → ClickHouse
+                                              │
+                                         MinIO :9003 (事件存储)
 ```
 
-**日志级别使用规范**：
+### 11.2 Trace 结构
 
-| 级别 | 场景 |
+一次用户消息 → 一条 Trace。Swarm 模式下同一条 trace 包含所有参与 Agent 的 span。
+
+```
+Trace: [swarm] 产品开发团队 | 帮我设计一个用户认证系统
+  ├── [chain_of_thought] 架构师-Agent (architect)
+  │   └── chat:deepseek-v4-pro        ← LLM 调用 (tokens/latency)
+  ├── [rewoo] 部署运维-Agent (devops)
+  │   ├── [rewoo] Phase 1: Plan
+  │   ├── [rewoo] Phase 2: Execute
+  │   └── [rewoo] Phase 3: Merge
+  ├── [react] 后端工程师-Agent (backend_dev)
+  │   ├── [react] Iteration 1
+  │   └── [react] Iteration 2
+  └── ...
+```
+
+Sessions 页面按 `session_id` 分组，一次完整多轮对话的所有 trace 自动聚合。
+
+### 11.3 元数据规范
+
+| 层 | 名称格式 | 元数据字段 |
+|----|---------|-----------|
+| Trace | `[{mode}] {team_name} \| {message[:60]}` | team_name, team_id, session_id, mode, user_message |
+| Span | `[{exec_mode}] {agent_name} ({role})` | agent_name, agent_role, exec_mode, node_key, provider, iteration |
+| Phase | `[{mode}] Phase {i}: {name}` | phase_name, phase_index, total_phases |
+| Generation | `chat:{model}` | provider, model, agent, exec_mode, latency_s |
+
+### 11.4 Scores 评分
+
+| Score | 来源 | 触发时机 | 值域 |
+|-------|------|---------|------|
+| `clarity_score` | M1 analyzer | need_clarify / need_confirm | 0.0-1.0 |
+| `review_score` | M7 verifier | 验证通过=1.0, 需重做=0.3 | 0.0-1.0 |
+
+在 Dashboard 中按时间聚合，追踪需求清晰度和产出质量趋势。
+
+### 11.5 告警通道
+
+`alert_webhook.py` — Slack / Discord / Custom Webhook 三通道，7 种告警类型，5 级过滤。安全过滤器检测到 prompt injection 时自动触发 security 告警。
+
+### 11.6 部署
+
+`docker-compose.langfuse.yml`：ClickHouse + LangFuse Web + LangFuse Worker + MinIO (宿主机)。复用项目 PostgreSQL + Redis。详见 `docs/monitoring-observability-module.md`。
+
+### 11.7 关键指标
+
+| 指标 | 来源 |
 |------|------|
-| INFO | 正常流程：Agent 执行开始/完成、HITL 触发/恢复、验证通过 |
-| WARNING | 可恢复异常：重试、降级、Token 接近上限 |
-| ERROR | 需要关注的错误：持久化失败、LLM 超时、验证失败 |
-
-**生产环境**：日志输出到 stdout → 容器运行时收集 → 集中式日志系统（如 Loki / ELK）。
-
-### 11.2 监控
-
-**关键指标 (RED 指标体系)**：
-
-| 类别 | 指标 | 来源 |
-|------|------|------|
-| Rate（速率） | API 请求速率 / Agent 执行速率 | FastAPI middleware |
-| Error（错误） | Agent 执行失败率 / API 5xx 率 | Loop Engine + Observer |
-| Duration（延迟） | Agent 执行 P50/P99 延迟 | Harness._audit_log 记录 |
-
-**业务指标**：
-
-| 指标 | 说明 |
-|------|------|
-| Agent 执行成功率 | (成功数 / 总执行数) × 100% |
-| HITL 触发率 | 需要人工介入的会话比例 |
-| Token 消耗趋势 | 按 session/team 统计 Token 用量 |
-| M7 drift 检测率 | 验证发现需求偏差的比例（反映需求分析质量） |
-
-**建议工具**：Prometheus（指标采集）+ Grafana（仪表盘）。
-
-### 11.3 告警
-
-| 告警规则 | 条件 | 严重度 |
-|---------|------|--------|
-| API 错误率过高 | 5xx > 5%（5分钟窗口） | Critical |
-| Agent 执行失败率 | 失败率 > 10%（10分钟窗口） | Warning |
-| Token 消耗异常 | 单 session > 800K tokens | Warning |
-| 数据库连接池耗尽 | 活跃连接 > 18/20 | Critical |
-| Redis 内存超限 | 使用率 > 80% | Warning |
-
-**通知渠道**：Slack Webhook / PagerDuty（按严重度分级）。
-
-### 11.4 分布式追踪
-
-Observer 系统已内置事件追踪能力，15 种 EventType 覆盖 Agent 执行全链路。建议在生产环境引入 OpenTelemetry：
-
-```
-用户请求 → WS连接 → Router分发 → M0→M1→...→M7 → Agent调用 → LLM API → 返回
-  │           │          │                              │            │
-  └───────────┴──────────┴──────────────────────────────┴────────────┘
-                         Trace ID 贯穿全链路
-```
-
-每个 Event 携带 session_id 和 trace_id，可串联单次协作的完整调用链。
+| Agent 执行次数 / Token 消耗 / 延迟分布 | LangFuse Dashboard 自动聚合 |
+| Session 活跃度 / 对话轮次 | Sessions 视图 |
+| 需求清晰度趋势 / 验证通过率 | Scores 时间序列 |
+| Agent 执行模式分布 | Span metadata 筛选 |
 
 ---
 
@@ -1318,4 +1362,4 @@ alembic/               # 迁移目录
 
 ---
 
-*文档基于 v5.0 代码生成，最后更新：2026-06-26*
+*文档基于 v5.0 代码生成，最后更新：2026-07-01*

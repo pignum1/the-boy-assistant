@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图7: Agent 执行模式 — The Boy Assistant v5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',Roboto,sans-serif;background:#0f0f1a;color:#e0e0e0;padding:24px}
+.container{max-width:1400px;margin:0 auto}
+h1{text-align:center;font-size:22px;margin-bottom:4px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:28px;font-size:13px}
+
+/* 模式选择器 */
+.router{background:#111827;border-radius:14px;padding:18px 24px;border:1px solid rgba(255,255,255,.06);margin-bottom:24px;display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap}
+.router-label{font-size:13px;color:#888}
+.router-box{background:#1a1530;border:1px solid #b39ddb;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:600;color:#b39ddb}
+.router-arrow{color:#444;font-size:18px;font-weight:700}
+
+/* 模式卡片 */
+.section{background:#111827;border-radius:14px;padding:24px;border:1px solid rgba(255,255,255,.06);margin-bottom:20px}
+.section h2{font-size:14px;color:#888;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+.modes{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}
+.mode-card{background:#151525;border-radius:10px;padding:16px 18px;border:1px solid rgba(255,255,255,.06);transition:.15s}
+.mode-card:hover{border-color:rgba(255,255,255,.15)}
+.mode-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.mode-icon{font-size:24px}
+.mode-name{font-size:15px;font-weight:700}
+.mode-tag{font-size:10px;padding:2px 8px;border-radius:4px;margin-left:auto}
+.tag-fast{background:#152515;color:#81c784}
+.tag-medium{background:#252015;color:#ffb74d}
+.tag-slow{background:#251515;color:#ef5350}
+.mode-desc{font-size:11px;color:#888;margin-bottom:8px}
+.trace{font-family:'SF Mono','Menlo',monospace;font-size:10px;background:#0a0a15;border-radius:6px;padding:8px 10px;line-height:1.5;color:#a0a0b0;white-space:pre;overflow-x:auto}
+
+/* 图例 */
+.legend{display:flex;gap:24px;justify-content:center;margin-top:24px;font-size:11px;color:#888;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:6px}
+.legend-dot{width:10px;height:10px;border-radius:3px}
+.ld1{background:#b39ddb}.ld2{background:#4fc3f7}.ld3{background:#81c784}.ld4{background:#ffb74d}.ld5{background:#ef5350}.ld6{background:#ce93d8}.ld7{background:#ff8a65}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Agent 七种执行模式</h1>
+<p class="subtitle">由 Agent.execution_mode 决定 · AgentExecutor 统一调度 · 三引擎复用 · LangFuse 自动追踪</p>
+
+<div class="router">
+  <span class="router-label">Agent 配置</span>
+  <div class="router-box">execution_mode</div>
+  <span class="router-arrow">→</span>
+  <span class="router-label">AgentExecutor.execute()</span>
+  <span class="router-arrow">→</span>
+  <span class="router-label">7 种执行器</span>
+  <span class="router-arrow">→</span>
+  <span class="router-label">LangFuse Span</span>
+</div>
+
+<div class="modes">
+
+  <!-- single_pass -->
+  <div class="mode-card">
+    <div class="mode-header">
+      <span class="mode-icon">⚡</span>
+      <span class="mode-name">single_pass</span>
+      <span class="mode-tag tag-fast">3-10s</span>
+    </div>
+    <div class="mode-desc">单次 LLM 调用 — 简单问答、单函数实现</div>
+    <div class="trace">[⚡ single_pass] 前端工程师-Agent (frontend_dev)
+├── input: 用户 prompt
+├── output: LLM 回复内容
+└── chat:deepseek-v4-pro  (tokens + latency)</div>
+  </div>
+
+  <!-- chain_of_thought -->
+  <div class="mode-card">
+    <div class="mode-header">
+      <span class="mode-icon">🔗</span>
+      <span class="mode-name">chain_of_thought</span>
+      <span class="mode-tag tag-fast">5-15s</span>
+    </div>
+    <div class="mode-desc">思维链推理 — 复杂问题分步思考</div>
+    <div class="trace">[🔗 chain_of_thought] 产品经理-Agent (pm)
+├── input: 用户 prompt（含 CoT 引导）
+├── output: 推理过程 + 最终答案
+└── chat:deepseek-v4-pro  (tokens + latency)</div>
+  </div>
+
+  <!-- plan_execute -->
+  <div class="mode-card">
+    <div class="mode-header">
+      <span class="mode-icon">📋</span>
+      <span class="mode-name">plan_execute</span>
+      <span class="mode-tag tag-medium">20-60s</span>
+    </div>
+    <div class="mode-desc">三阶段规划执行 — Plan → Review → Supplement</div>
+    <div class="trace">[📋 plan_execute] 产品经理-Agent (pm)
+├── input: 任务描述
+├── output: 完整规划 + 补充结果
+├── [Phase 1: Plan]     → chat:deepseek  (plan)
+├── [Phase 2: Review]   → chat:deepseek  (review)
+└── [Phase 3: Supplement] → chat:deepseek  (supplement)</div>
+  </div>
+
+  <!-- react -->
+  <div class="mode-card">
+    <div class="mode-header">
+      <span class="mode-icon">🔄</span>
+      <span class="mode-name">ReAct</span>
+      <span class="mode-tag tag-slow">20-120s</span>
+    </div>
+    <div class="mode-desc">Think → Act → Observe 循环 — 工具调用</div>
+    <div class="trace">[🔄 react] 后端工程师-Agent (backend_dev)
+├── input: 任务 + 工具声明
+├── output: 最终答案
+├── [Iteration 1]
+│   ├── chat:deepseek  (Think)
+│   └── tool:write_file  (Act)
+├── [Iteration 2]
+│   └── chat:deepseek  (Think + final)
+└── ...  (max 5 iterations)</div>
+  </div>
+
+  <!-- rewoo -->
+  <div class="mode-card">
+    <div class="mode-header">
+      <span class="mode-icon">📦</span>
+      <span class="mode-name">ReWOO</span>
+      <span class="mode-tag tag-medium">15-60s</span>
+    </div>
+    <div class="mode-desc">规划 + 并行工具执行 + 合并结果</div>
+    <div class="trace">[📦 rewoo] 部署运维-Agent (devops)
+├── input: 任务描述
+├── output: 合并结果
+├── [Phase 1: Plan]    → chat:deepseek  (plan)
+├── [Phase 2: Execute] → tool:write × N  (parallel)
+└── [Phase 3: Merge]   → chat:deepseek  (merge)</div>
+  </div>
+
+  <!-- reflexion -->
+  <div class="mode-card">
+    <div class="mode-header">
+      <span class="mode-icon">🪞</span>
+      <span class="mode-name">Reflexion</span>
+      <span class="mode-tag tag-slow">30-180s</span>
+    </div>
+    <div class="mode-desc">自我评分 + 根据反馈迭代改进</div>
+    <div class="trace">[🪞 reflexion] 测试员-Agent (tester)
+├── input: 任务 + 测试标准
+├── output: 最终代码（经过 self-critic）
+├── [Round 1: Execute]    → chat:deepseek  (initial)
+├── [Critique Round 1]    → chat:deepseek  (score+issues)
+├── [Redo Round 2]        → chat:deepseek  (improved)
+└── ...  (until score ≥ threshold or max rounds)</div>
+  </div>
+
+  <!-- self_consistency -->
+  <div class="mode-card">
+    <div class="mode-header">
+      <span class="mode-icon">🗳️</span>
+      <span class="mode-name">self_consistency</span>
+      <span class="mode-tag tag-medium">30-120s</span>
+    </div>
+    <div class="mode-desc">3 次独立采样 → 综合最优方案</div>
+    <div class="trace">[🗳️ self_consistency] 架构师-Agent (architect)
+├── input: 任务（含采样引导）
+├── output: 综合后的最终方案
+├── [Phase 1: Sampling]
+│   ├── chat:deepseek  (sample 1/3)
+│   ├── chat:deepseek  (sample 2/3)
+│   └── chat:deepseek  (sample 3/3)
+└── [Phase 2: Merge]  → chat:deepseek  (synthesis)</div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot ld1"></div> Trace root (create_trace)</div>
+  <div class="legend-item"><div class="legend-dot ld2"></div> Span (agent_executor)</div>
+  <div class="legend-item"><div class="legend-dot ld3"></div> Phase Span</div>
+  <div class="legend-item"><div class="legend-dot ld4"></div> Iteration Span</div>
+  <div class="legend-item"><div class="legend-dot ld5"></div> Generation (LLM call)</div>
+  <div class="legend-item"><div class="legend-dot ld6"></div> Critique/Redo Span</div>
+  <div class="legend-item"><div class="legend-dot ld7"></div> Sampling/Merge Span</div>
+</div>
+
+</div>
+</body>
+</html>

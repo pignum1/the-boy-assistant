@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图8: 可观测性全链路 — The Boy Assistant v5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',Roboto,sans-serif;background:#0f0f1a;color:#e0e0e0;padding:24px}
+.container{max-width:1400px;margin:0 auto}
+h1{text-align:center;font-size:22px;margin-bottom:4px;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:28px;font-size:13px}
+
+.section{background:#111827;border-radius:14px;padding:24px;border:1px solid rgba(255,255,255,.06);margin-bottom:24px}
+.section h2{font-size:15px;color:#888;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:8px}
+
+/* 全链路管道 */
+.pipeline{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
+.pipe-box{flex-shrink:0;border-radius:10px;padding:16px 18px;text-align:center;min-width:130px;border:1px solid rgba(255,255,255,.08);transition:.15s}
+.pipe-box:hover{transform:translateY(-2px)}
+.pipe-box .icon{font-size:26px;margin-bottom:4px}
+.pipe-box .name{font-size:12px;font-weight:700;margin-bottom:2px}
+.pipe-box .tech{font-size:9px;color:#888}
+.pipe-arrow{color:#444;font-size:22px;font-weight:700}
+.pipe-arrow.active{color:#81c784}
+
+.pb-backend{background:#1a1530;border-color:rgba(179,157,219,.2)}.pb-backend .name{color:#b39ddb}
+.pb-otel{background:#152530;border-color:rgba(79,195,247,.2)}.pb-otel .name{color:#4fc3f7}
+.pb-server{background:#251515;border-color:rgba(239,83,80,.2)}.pb-server .name{color:#ef5350}
+.pb-queue{background:#252015;border-color:rgba(255,183,77,.2)}.pb-queue .name{color:#ffb74d}
+.pb-worker{background:#2d1b3d;border-color:rgba(206,147,216,.2)}.pb-worker .name{color:#ce93d8}
+.pb-storage{background:#151525;border-color:rgba(255,255,255,.08)}.pb-storage .name{color:#aaa}
+.pb-dash{background:#152515;border-color:rgba(129,199,132,.2)}.pb-dash .name{color:#81c784}
+
+/* 三层模型 */
+.layers{display:flex;gap:16px;flex-wrap:wrap}
+.layer{flex:1;min-width:280px;background:#151525;border-radius:10px;padding:16px;border:1px solid rgba(255,255,255,.06)}
+.layer h3{font-size:13px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06)}
+.layer .field{font-size:10px;margin-bottom:3px;display:flex;gap:6px}
+.layer .field .key{color:#888;min-width:55px}
+.layer .field .val{color:#e0e0e0;font-family:'SF Mono',Menlo,monospace}
+
+.l1{border-left:3px solid #b39ddb}
+.l2{border-left:3px solid #4fc3f7}
+.l3{border-left:3px solid #81c784}
+
+/* 容器映射 */
+.containers{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.ctr-card{background:#151525;border-radius:8px;padding:14px;border:1px solid rgba(255,255,255,.06);text-align:center}
+.ctr-card .ctr-icon{font-size:20px;margin-bottom:4px}
+.ctr-card .ctr-name{font-size:12px;font-weight:600;margin-bottom:2px}
+.ctr-card .ctr-port{font-size:10px;color:#81c784;margin-bottom:4px}
+.ctr-card .ctr-desc{font-size:10px;color:#888;line-height:1.4}
+
+/* scores */
+.scores{display:flex;gap:12px;flex-wrap:wrap}
+.score-card{flex:1;min-width:200px;border-radius:8px;padding:14px;text-align:center;border:1px solid rgba(255,255,255,.06)}
+.sc-clarity{background:#1a1530;border-color:rgba(179,157,219,.15)}
+.sc-review{background:#152515;border-color:rgba(129,199,132,.15)}
+.score-card .sc-icon{font-size:24px;margin-bottom:4px}
+.score-card .sc-name{font-size:13px;font-weight:700;margin-bottom:2px}
+.score-card .sc-from{font-size:10px;color:#888;margin-bottom:4px}
+.score-card .sc-range{font-size:9px;color:#888}
+
+/* alert */
+.alerts{display:flex;gap:8px;flex-wrap:wrap}
+.alert-chip{font-size:10px;padding:4px 10px;border-radius:12px;border:1px solid}
+.ac-slack{color:#4fc3f7;border-color:rgba(79,195,247,.3)}
+.ac-discord{color:#ce93d8;border-color:rgba(206,147,216,.3)}
+.ac-custom{color:#ffb74d;border-color:rgba(255,183,77,.3)}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>可观测性全链路 — LangFuse 集成</h1>
+<p class="subtitle">三层元数据 · 异步 OTLP 上报 · 独立进程 · 静默降级 · 会话分组</p>
+
+<!-- 全链路 -->
+<div class="section">
+  <h2>📡 数据管道</h2>
+  <div class="pipeline">
+    <div class="pipe-box pb-backend">
+      <div class="icon">🐍</div>
+      <div class="name">Backend</div>
+      <div class="tech">Python SDK v4.12</div>
+    </div>
+    <div class="pipe-arrow active">→</div>
+    <div class="pipe-box pb-otel">
+      <div class="icon">📤</div>
+      <div class="name">OTLP HTTP</div>
+      <div class="tech">/api/public/otel/v1/traces</div>
+    </div>
+    <div class="pipe-arrow active">→</div>
+    <div class="pipe-box pb-server">
+      <div class="icon">🌐</div>
+      <div class="name">LangFuse Web</div>
+      <div class="tech">Next.js :3000</div>
+    </div>
+    <div class="pipe-arrow active">→</div>
+    <div class="pipe-box pb-queue">
+      <div class="icon">📋</div>
+      <div class="name">Redis Queue</div>
+      <div class="tech">BullMQ :6379</div>
+    </div>
+    <div class="pipe-arrow active">→</div>
+    <div class="pipe-box pb-worker">
+      <div class="icon">⚙️</div>
+      <div class="name">Worker</div>
+      <div class="tech">Node.js :3030</div>
+    </div>
+    <div class="pipe-arrow active">→</div>
+    <div class="pipe-box pb-storage">
+      <div class="icon">💾</div>
+      <div class="name">ClickHouse</div>
+      <div class="tech">时序索引 :8123</div>
+    </div>
+    <div class="pipe-arrow active">→</div>
+    <div class="pipe-box pb-dash">
+      <div class="icon">📊</div>
+      <div class="name">Dashboard</div>
+      <div class="tech">:3000 UI</div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:12px;font-size:10px;color:#888">
+    MinIO :9003 (S3 事件存储) ← OTLP 事件落盘 → Worker 读取 → ClickHouse 写入
+  </div>
+</div>
+
+<!-- 三层元数据 -->
+<div class="section">
+  <h2>📐 三层元数据模型</h2>
+  <div class="layers">
+    <div class="layer l1">
+      <h3>🔷 Trace（会话/消息）</h3>
+      <div class="field"><span class="key">Name</span><span class="val">[swarm] 产品开发团队 | 帮我设计...</span></div>
+      <div class="field"><span class="key">Tags</span><span class="val">mode:swarm, team:产品开发团队</span></div>
+      <div class="field"><span class="key">Meta</span><span class="val">team_name, team_id, session_id, mode, user_message</span></div>
+      <div class="field"><span class="key">创建</span><span class="val">router.py dispatch()</span></div>
+    </div>
+    <div class="layer l2">
+      <h3>🔶 Span（Agent 执行）</h3>
+      <div class="field"><span class="key">Name</span><span class="val">[react] 后端工程师-Agent (backend_dev)</span></div>
+      <div class="field"><span class="key">Input</span><span class="val">prompt[:1000]</span></div>
+      <div class="field"><span class="key">Output</span><span class="val">content, iterations, exec_mode, model, latency</span></div>
+      <div class="field"><span class="key">Meta</span><span class="val">agent_name, agent_role, exec_mode, node_key, provider, iteration</span></div>
+      <div class="field"><span class="key">创建</span><span class="val">agent_executor.py execute()</span></div>
+    </div>
+    <div class="layer l3">
+      <h3>🔹 Generation（LLM 调用）</h3>
+      <div class="field"><span class="key">Name</span><span class="val">chat:deepseek-v4-pro</span></div>
+      <div class="field"><span class="key">Model</span><span class="val">deepseek-v4-pro</span></div>
+      <div class="field"><span class="key">Usage</span><span class="val">prompt_tokens, completion_tokens, total_tokens</span></div>
+      <div class="field"><span class="key">Meta</span><span class="val">provider, model, agent, exec_mode, latency_s</span></div>
+      <div class="field"><span class="key">创建</span><span class="val">agent_chat.py generation()</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- 部署架构 -->
+<div class="section">
+  <h2>🐳 部署架构</h2>
+  <div class="containers">
+    <div class="ctr-card">
+      <div class="ctr-icon">🖥️</div>
+      <div class="ctr-name">ClickHouse</div>
+      <div class="ctr-port">:8123 :9000</div>
+      <div class="ctr-desc">时序索引 · 列式存储</div>
+    </div>
+    <div class="ctr-card">
+      <div class="ctr-icon">🌐</div>
+      <div class="ctr-name">LangFuse Web</div>
+      <div class="ctr-port">:3000</div>
+      <div class="ctr-desc">Dashboard + OTLP 接收</div>
+    </div>
+    <div class="ctr-card">
+      <div class="ctr-icon">⚙️</div>
+      <div class="ctr-name">LangFuse Worker</div>
+      <div class="ctr-port">:3030</div>
+      <div class="ctr-desc">BullMQ 消费 · ClickHouse 写入</div>
+    </div>
+    <div class="ctr-card">
+      <div class="ctr-icon">💾</div>
+      <div class="ctr-name">MinIO (宿主机)</div>
+      <div class="ctr-port">:9003</div>
+      <div class="ctr-desc">S3 兼容 · 事件存储</div>
+    </div>
+    <div class="ctr-card">
+      <div class="ctr-icon">🗄️</div>
+      <div class="ctr-name">PostgreSQL (复用)</div>
+      <div class="ctr-port">:5432</div>
+      <div class="ctr-desc">LangFuse 元数据</div>
+    </div>
+    <div class="ctr-card">
+      <div class="ctr-icon">📋</div>
+      <div class="ctr-name">Redis (复用)</div>
+      <div class="ctr-port">:6379</div>
+      <div class="ctr-desc">BullMQ 队列 · 缓存</div>
+    </div>
+  </div>
+</div>
+
+<!-- Scores + Alerts -->
+<div class="section">
+  <h2>📊 Scores + 🚨 Alerts</h2>
+  <div class="scores">
+    <div class="score-card sc-clarity">
+      <div class="sc-icon">🎯</div>
+      <div class="sc-name">clarity_score</div>
+      <div class="sc-from">M1 Requirement Analyzer</div>
+      <div class="sc-range">need_clarify / need_confirm → 0.0-1.0</div>
+    </div>
+    <div class="score-card sc-review">
+      <div class="sc-icon">✅</div>
+      <div class="sc-name">review_score</div>
+      <div class="sc-from">M7 Independent Verifier</div>
+      <div class="sc-range">pass=1.0 · retry=0.3 · 0.0-1.0</div>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <div class="alerts">
+      <span class="alert-chip ac-slack">💬 Slack Webhook</span>
+      <span class="alert-chip ac-discord">🎮 Discord Webhook</span>
+      <span class="alert-chip ac-custom">🔗 Custom Webhook</span>
+      <span style="font-size:10px;color:#888;margin-left:8px">7 种告警 · 5 级过滤 · alert_webhook.py</span>
+    </div>
+  </div>
+</div>
+
+<!-- 关键设计 -->
+<div class="section">
+  <h2>🔑 关键设计决策</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;font-size:12px">
+    <div style="padding:10px;background:#151525;border-radius:8px">✅ <b>静默降级</b>: LANGFUSE_HOST="" 全部变 no-op，0 开销</div>
+    <div style="padding:10px;background:#151525;border-radius:8px">✅ <b>独立进程</b>: LangFuse 不共享业务后端进程/DB 连接池</div>
+    <div style="padding:10px;background:#151525;border-radius:8px">✅ <b>异步上报</b>: OTLP 批量异步发送，不阻塞 LLM 调用</div>
+    <div style="padding:10px;background:#151525;border-radius:8px">✅ <b>异常隔离</b>: 所有监控调用 try/except，异常不传播</div>
+    <div style="padding:10px;background:#151525;border-radius:8px">✅ <b>会话分组</b>: propagate_attributes 自动传播 session_id</div>
+    <div style="padding:10px;background:#151525;border-radius:8px">✅ <b>惰性导入</b>: langfuse 包按需导入，未安装优雅降级</div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>
