@@ -12,6 +12,8 @@ import logging
 import time
 from typing import Any
 
+from langgraph.types import RunnableConfig
+
 from .types import CollabState
 
 logger = logging.getLogger(__name__)
@@ -19,13 +21,17 @@ logger = logging.getLogger(__name__)
 
 # ── LangGraph node ────────────────────────────────────────────────
 
-async def m6_execute_worker_node(state: CollabState) -> dict[str, Any]:
+async def m6_execute_worker_node(state: CollabState, config: RunnableConfig = None) -> dict[str, Any]:
     """Execute current_delegation as a worker task.
 
     Reads current_delegation (set by m6_delegate or m6_delegate_push),
     builds M5 context with delegation-aware fields, calls agent_chat,
     extracts file changes, broadcasts events, and returns results.
     """
+    # Extract harness from config
+    harness = None
+    if config and "configurable" in config:
+        harness = config["configurable"].get("harness")
     current = state.get("current_delegation", {})
     if not current:
         return {
@@ -125,6 +131,31 @@ async def m6_execute_worker_node(state: CollabState) -> dict[str, Any]:
                 }
 
             t_start = time.monotonic()
+            agent_name = agent.name or role_name
+
+            # ── Harness: before_execution (prompt check + token budget) ──
+            if harness:
+                try:
+                    from app.services.harness import ExecutionContext as HEC
+                    h_ctx = HEC(
+                        session_id=session_id, team_id=team_id,
+                        agent_id=str(agent.id), agent_name=agent_name,
+                        node_key="m6_execute_worker", task_id=member_id,
+                        instruction=goal, user_message=requirements_anchor,
+                        workspace_path=workspace_path,
+                    )
+                    h_before = await harness.before_execution(h_ctx)
+                    if h_before.is_blocked:
+                        return {
+                            "status": "blocked",
+                            "_content": f"⛔ Token 预算超限: {h_before.block_reason}",
+                            "_agent_name": agent_name,
+                        }
+                    if h_before.prompt:
+                        prompt = h_before.prompt  # Harness 构建的标准化 prompt
+                except Exception as he:
+                    logger.warning(f"Harness before_execution failed: {he}")
+
             # ── AgentExecutor 统一调度 (M6 Worker 默认用 ReAct) ──
             from app.services.collaboration.agent_executor import agent_executor as _exec
 
@@ -139,7 +170,34 @@ async def m6_execute_worker_node(state: CollabState) -> dict[str, Any]:
             latency_s = time.monotonic() - t_start
 
             output = llm_result.get("content", "")
-            agent_name = agent.name or role_name
+
+            # ── Harness: after_execution (file extraction + audit) ──
+            if harness:
+                try:
+                    from app.services.harness import ExecutionContext as HEC, ExecutionResult as HER
+                    usage = llm_result.get("usage", {}) or {}
+                    h_ctx = HEC(
+                        session_id=session_id, team_id=team_id,
+                        agent_id=str(agent.id), agent_name=agent_name,
+                        node_key="m6_execute_worker", task_id=member_id,
+                        instruction=goal, user_message=requirements_anchor,
+                        workspace_path=workspace_path,
+                    )
+                    h_result = HER(
+                        content=output,
+                        model=llm_result.get("model", ""),
+                        provider=llm_result.get("provider", ""),
+                        latency_ms=latency_s * 1000,
+                        usage={
+                            "prompt_tokens": usage.get("prompt_tokens", 0),
+                            "completion_tokens": usage.get("completion_tokens", 0),
+                            "total_tokens": usage.get("total_tokens", 0),
+                        },
+                        tool_results=llm_result.get("reasoning", {}).get("tool_calls", []),
+                    )
+                    await harness.after_execution(h_ctx, h_result)
+                except Exception as he:
+                    logger.warning(f"Harness after_execution failed: {he}")
 
             # Extract file changes from tool calls
             files = _extract_file_changes(llm_result)

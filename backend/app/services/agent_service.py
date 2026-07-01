@@ -39,6 +39,8 @@ class AgentService:
             persona_id=data.persona_id,
             tools=tool_ids_str,
             status="idle",
+            execution_mode=data.execution_mode or "single_pass",
+            execution_config=data.execution_config,
         )
         self.db.add(agent)
         await self.db.commit()

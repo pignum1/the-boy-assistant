@@ -414,11 +414,27 @@ export function SwarmView({ sessionId, teamId }: Props) {
     return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Get agent color based on name
-  const getAgentColor = (agentName: string) => {
-    const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c'];
+  // Agent color palette — each agent gets a consistent hue, used for header + bubble
+  const AGENT_COLORS = [
+    { accent: '#e74c3c', name: 'red' },
+    { accent: '#3498db', name: 'blue' },
+    { accent: '#2ecc71', name: 'green' },
+    { accent: '#f39c12', name: 'orange' },
+    { accent: '#9b59b6', name: 'purple' },
+    { accent: '#1abc9c', name: 'teal' },
+    { accent: '#e67e22', name: 'amber' },
+    { accent: '#2980b9', name: 'sky' },
+  ];
+  const getAgentColorSet = (agentName: string) => {
     const hash = agentName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
+    const c = AGENT_COLORS[hash % AGENT_COLORS.length];
+    return {
+      accent: c.accent,
+      header: c.accent,
+      border: `${c.accent}33`,       // ~20% opacity
+      bg: `${c.accent}0D`,           // ~5% opacity
+      text: c.accent,
+    };
   };
 
   return (
@@ -579,16 +595,16 @@ export function SwarmView({ sessionId, teamId }: Props) {
           }}>
             {/* Agent Header (non-user) */}
             {!msg.isUser && (
-              <div style={{ marginBottom: 6, paddingLeft: 4 }}>
+              <div style={{ marginBottom: 6, paddingLeft: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: getAgentColor(msg.agentName),
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: getAgentColorSet(msg.agentName).header,
                 }}>
                   {msg.agentEmoji} {msg.agentName}
                   {msg.round !== undefined && ` (第${msg.round}轮)`}
                 </span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+                <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
                   {formatTime(msg.timestamp)}
                 </span>
               </div>
@@ -643,39 +659,45 @@ export function SwarmView({ sessionId, teamId }: Props) {
             )}
 
             {/* Message Bubble */}
-            <div style={{
-              background: msg.isUser ? 'var(--chat-msg-user-bg)' : 'var(--chat-msg-agent-bg)',
-              color: msg.isUser ? 'var(--chat-msg-user-text)' : 'var(--chat-msg-agent-text)',
-              padding: msg.isUser ? '10px 16px' : '12px 16px',
-              borderRadius: 12,
-              borderBottomLeftRadius: msg.isUser ? 12 : 4,
-              borderBottomRightRadius: msg.isUser ? 4 : 12,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              border: !msg.isUser ? '1px solid var(--chat-msg-agent-border)' : 'none',
-              maxWidth: '100%',
-            }}>
-              {msg.isUser ? (
+            {(() => {
+              const agentColors = !msg.isUser ? getAgentColorSet(msg.agentName) : null;
+              return (
                 <div style={{
-                  fontSize: 14,
-                  lineHeight: 1.6,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
+                  background: msg.isUser ? 'var(--chat-msg-user-bg)' : agentColors!.bg,
+                  color: msg.isUser ? 'var(--chat-msg-user-text)' : 'var(--chat-msg-agent-text)',
+                  padding: msg.isUser ? '10px 16px' : '12px 16px',
+                  borderRadius: 12,
+                  borderBottomLeftRadius: msg.isUser ? 12 : 4,
+                  borderBottomRightRadius: msg.isUser ? 4 : 12,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  border: !msg.isUser ? `1px solid ${agentColors!.border}` : 'none',
+                  borderLeft: !msg.isUser ? `3px solid ${agentColors!.accent}` : 'none',
+                  maxWidth: '100%',
                 }}>
-                  {msg.content}
+                  {msg.isUser ? (
+                    <div style={{
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}>
+                      {msg.content}
+                    </div>
+                  ) : (
+                    <div className="markdown-content" style={{
+                      fontSize: 14,
+                      lineHeight: 1.7,
+                      color: 'var(--chat-msg-agent-text)',
+                      whiteSpace: 'pre-line',
+                    }}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="markdown-content" style={{
-                  fontSize: 14,
-                  lineHeight: 1.7,
-                  color: 'var(--chat-msg-agent-text)',
-                  whiteSpace: 'pre-line',
-                }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Inline HITL UI — compact */}
             {msg.hitlOptions && !msg.hitlResolved && (

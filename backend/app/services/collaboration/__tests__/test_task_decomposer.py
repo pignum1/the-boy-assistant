@@ -1,6 +1,6 @@
 """Tests for M4 TaskDecomposer."""
 import pytest
-from app.services.collaboration.task_decomposer import (
+from app.services.collaboration.m4_task_decomposer import (
     validate_no_cycles,
     topological_sort,
     build_decompose_prompt,
@@ -119,6 +119,6 @@ class TestTopologicalSort:
 
 class TestBuildPrompt:
     def test_includes_requirements_and_roles(self):
-        prompt = build_decompose_prompt("登录系统: 邮箱+密码", ["architect", "backend_dev"])
+        prompt = build_decompose_prompt("登录系统: 邮箱+密码", ["architect", "backend_dev"], [])
         assert "登录系统" in prompt
         assert "architect" in prompt

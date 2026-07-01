@@ -1,6 +1,6 @@
 """Tests for M1 SupervisorAnalyzer."""
 import pytest
-from app.services.collaboration.supervisor_analyzer import (
+from app.services.collaboration.m1_requirement_analyzer import (
     build_analysis_prompt,
     parse_supervisor_output,
     validate_supervisor_output,
@@ -56,6 +56,7 @@ class TestValidateSupervisorOutput:
         errors = validate_supervisor_output({
             "action": "need_clarify",
             "questions": ["问题1", "问题2"],
+            "clarity_score": 0.5,
         })
         assert len(errors) == 0
 
@@ -70,6 +71,7 @@ class TestValidateSupervisorOutput:
             "complexity": "medium",
             "summary": "登录系统",
             "required_roles": ["backend_dev"],
+            "clarity_score": 0.85,
         })
         assert len(errors) == 0
 
@@ -150,7 +152,8 @@ class TestDecisionToState:
             "guidance": "使用FastAPI",
         })
         assert updates["status"] == "executing"
-        assert "plan" in updates
+        assert "task_dag" in updates
+        assert updates["requirements_anchor"] == "使用FastAPI"
 
     def test_invite_agent_sets_hitl(self):
         updates = supervisor_decision_to_state({
@@ -170,15 +173,15 @@ class TestSystemPrompt:
         prompt = SUPERVISOR_SYSTEM_PROMPT
         assert "need_clarify" in prompt
         assert "need_confirm" in prompt
-        assert "execute_task" in prompt
-        assert "verify" in prompt
-        assert "done" in prompt
+        assert "analysis_report" in prompt
+        assert "phases" in prompt
 
     def test_prompt_contains_core_principles(self):
         prompt = SUPERVISOR_SYSTEM_PROMPT
-        assert "先提问" in prompt
-        assert "不猜测" in prompt
-        assert "NEVER DELEGATE" in prompt
+        assert "详尽优于简洁" in prompt
+        assert "具体优于抽象" in prompt
+        assert "需求洞察" in prompt
+        assert "尽量确认而非澄清" in prompt
 
 
 class TestBuildPrompt:

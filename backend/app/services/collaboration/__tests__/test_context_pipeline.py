@@ -1,7 +1,7 @@
 """Tests for M5 ContextPipeline — trimmed worker context."""
 
 import pytest
-from app.services.collaboration.context_pipeline import ContextPipeline
+from app.services.collaboration.m5_context_pipeline import ContextPipeline
 
 
 class TestContextPipeline:

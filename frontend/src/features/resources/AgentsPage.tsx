@@ -32,6 +32,7 @@ interface AgentResource {
   default_model_id?: string;
   tools?: string[];
   status?: string;
+  execution_mode?: string; // single_pass | plan_execute | react
   team_name?: string;
   current_task?: string;
 }
@@ -365,6 +366,15 @@ function AgentPanel({
   const [name, setName] = useState(agent?.name || '');
   const [personaId, setPersonaId] = useState(agent?.persona_id || '');
   const [defaultModelId, setDefaultModelId] = useState(agent?.default_model_id || '');
+  const [executionMode, setExecutionMode] = useState(agent?.execution_mode || 'single_pass');
+  // 模式专属参数
+  const execConfig: Record<string, unknown> = (agent as any)?.execution_config || {};
+  const [enableReview, setEnableReview] = useState(execConfig.enable_review !== false);
+  const [minScore, setMinScore] = useState<number>(Number(execConfig.min_score) || 70);
+  const [maxIterations, setMaxIterations] = useState<number>(Number(execConfig.max_iterations) || 5);
+  const [enableSelfReview, setEnableSelfReview] = useState(execConfig.enable_self_review !== false);
+  const [maxReflections, setMaxReflections] = useState<number>(Number(execConfig.max_reflections) || 3);
+  const [sampleCount, setSampleCount] = useState<number>(Number(execConfig.sample_count) || 3);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -407,16 +417,33 @@ function AgentPanel({
 
   // ── Actions ──
 
+  const buildExecutionConfig = (): Record<string, unknown> | null => {
+    switch (executionMode) {
+      case 'plan_execute':
+        return { enable_review: enableReview, min_score: minScore };
+      case 'react':
+        return { max_iterations: maxIterations, enable_self_review: enableSelfReview };
+      case 'reflexion':
+        return { max_reflections: maxReflections };
+      case 'self_consistency':
+        return { sample_count: sampleCount };
+      default:
+        return null;
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) { showToast('请输入 Agent 名称', 'error'); return; }
     if (!personaId) { showToast('请选择 Persona', 'error'); return; }
     if (!defaultModelId) { showToast('请选择模型', 'error'); return; }
     setSaving(true);
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         name: name.trim(),
         persona_id: personaId,
         model_id: defaultModelId,
+        execution_mode: executionMode,
+        execution_config: buildExecutionConfig(),
       };
       if (isNew) {
         await api.post('/api/v1/agents', body);
@@ -568,6 +595,84 @@ function AgentPanel({
           <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 16 }}>
             先选供应商，再选模型。运行时可在 SOP 节点中按复杂度动态路由
           </div>
+
+          {/* 执行模式 */}
+          <div style={{ marginBottom: 8 }}>
+            <label style={formLabelStyle}>执行模式</label>
+            <select
+              value={executionMode}
+              onChange={(e) => { setExecutionMode(e.target.value); setEnableReview(true); setMinScore(70); setMaxIterations(5); setEnableSelfReview(true); setMaxReflections(3); setSampleCount(3); }}
+              style={{ ...formInputStyle, cursor: 'pointer' }}
+            >
+              <option value="single_pass">单次执行 — 一次调用直接回答</option>
+              <option value="chain_of_thought">思维链 — 强制逐步推理</option>
+              <option value="plan_execute">规划-执行 — 先规划→自审→补全</option>
+              <option value="rewoo">ReWOO — 批量规划工具调用，一次执行</option>
+              <option value="react">ReAct — Think→Act→Observe 迭代循环</option>
+              <option value="reflexion">Reflexion — 执行→批判→重做</option>
+              <option value="self_consistency">自一致性 — 多采样投票</option>
+            </select>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 16 }}>
+            决定该 Agent 在直接聊天和管道中如何推理；一个 Agent 只有一种模式
+          </div>
+
+          {/* ── 模式参数（按模式条件显示）── */}
+          {(executionMode === 'plan_execute' || executionMode === 'react' || executionMode === 'reflexion' || executionMode === 'self_consistency') && (
+            <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, border: '1px solid var(--border-medium)' }}>
+              <div style={{ ...formLabelStyle, marginBottom: 10 }}>模式参数</div>
+
+              {/* plan_execute 参数 */}
+              {executionMode === 'plan_execute' && (
+                <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={enableReview} onChange={(e) => setEnableReview(e.target.checked)} />
+                    启用自审查（Phase 2 Review）
+                  </label>
+                  {enableReview && (
+                    <div style={{ marginBottom: 4 }}>
+                      <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 4 }}>审查通过阈值（0-100）</label>
+                      <input type="number" min={0} max={100} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}
+                        style={{ ...formInputStyle, width: 80 }} />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* react 参数 */}
+              {executionMode === 'react' && (
+                <>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 4 }}>最大迭代次数</label>
+                    <input type="number" min={1} max={15} value={maxIterations} onChange={(e) => setMaxIterations(Number(e.target.value))}
+                      style={{ ...formInputStyle, width: 80 }} />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={enableSelfReview} onChange={(e) => setEnableSelfReview(e.target.checked)} />
+                    启用代码自检（每轮检查省略号/占位符）
+                  </label>
+                </>
+              )}
+
+              {/* reflexion 参数 */}
+              {executionMode === 'reflexion' && (
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 4 }}>最大反思次数</label>
+                  <input type="number" min={1} max={5} value={maxReflections} onChange={(e) => setMaxReflections(Number(e.target.value))}
+                    style={{ ...formInputStyle, width: 80 }} />
+                </div>
+              )}
+
+              {/* self_consistency 参数 */}
+              {executionMode === 'self_consistency' && (
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 4 }}>采样次数</label>
+                  <input type="number" min={2} max={7} value={sampleCount} onChange={(e) => setSampleCount(Number(e.target.value))}
+                    style={{ ...formInputStyle, width: 80 }} />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Info hint */}
           <div style={{ background: 'var(--blue-bg)', border: '1px solid var(--blue-border)', borderRadius: 8, padding: '10px 14px', fontSize: 11, color: 'var(--blue-400)' }}>

@@ -241,8 +241,10 @@ export interface ToolCallRecord {
 export interface ReasoningDetail {
   /** 主管分析文本 */
   supervisorAnalysis?: string;
-  /** 思考步骤文本 */
+  /** 思考步骤文本 (camelCase) */
   thinkingSteps?: string;
+  /** 思考步骤文本 (snake_case — 兼容后端 WS 事件) */
+  thinking_steps?: string;
   /** 决策摘要 */
   decisionSummary?: string;
   /** 模型路由信息 */
@@ -255,6 +257,12 @@ export interface ReasoningDetail {
   };
   /** 工具调用列表 */
   toolCalls?: ToolCallRecord[];
+  /** 执行模式 */
+  execMode?: string;
+  /** 执行模式 (snake_case — 兼容后端 WS 事件) */
+  exec_mode?: string;
+  /** LLM 调用次数 */
+  iterations?: number;
 }
 
 /** 时间线条目联合类型 */
@@ -309,6 +317,8 @@ export interface AgentMessageItem {
   content: string;
   /** 推理详情（展开区） */
   reasoning?: ReasoningDetail;
+  /** 执行模式（直接来自 agent_message 事件，不依赖 reasoning） */
+  execMode?: string;
   /** 模型名 */
   model?: string;
   /** 耗时 ms */

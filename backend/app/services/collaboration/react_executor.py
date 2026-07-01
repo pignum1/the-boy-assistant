@@ -17,6 +17,7 @@ import re
 from typing import Any
 
 from app.services.agent_chat import agent_chat
+from app.services.trace_context import TraceContext, trace_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -110,17 +111,15 @@ class ReActExecutor:
     """ReAct 执行器。
 
     用法:
-        executor = ReActExecutor(max_iterations=5)
-        result = await executor.execute(prompt=prompt, agent=agent, db=db)
+        executor = ReActExecutor()
+        result = await executor.execute(
+            prompt=prompt, agent=agent, db=db,
+            config={"max_iterations": 5, "enable_self_review": True},
+        )
     """
 
-    def __init__(
-        self,
-        max_iterations: int = 5,
-        enable_self_review: bool = True,
-    ):
-        self.max_iterations = max_iterations
-        self.enable_self_review = enable_self_review
+    def __init__(self):
+        pass
 
     async def execute(
         self,
@@ -129,7 +128,11 @@ class ReActExecutor:
         db,
         session_id: str = "",
         team_id: str = "",
+        config: dict | None = None,
     ) -> dict[str, Any]:
+        # 从 config 读取参数，兜底默认值
+        max_iterations = (config or {}).get("max_iterations", 5)
+        enable_self_review = (config or {}).get("enable_self_review", True)
         """执行 ReAct 循环。
 
         Returns:
@@ -145,18 +148,19 @@ class ReActExecutor:
         all_tool_calls: list[dict] = []
         written_paths: set[str] = set()
 
-        for i in range(self.max_iterations):
-            logger.info(f"[ReAct] Iteration {i+1}/{self.max_iterations}")
+        for i in range(max_iterations):
+            logger.info(f"[ReAct] Iteration {i+1}/{max_iterations}")
 
             # 构建当前轮的 prompt
             history_text = "\n\n".join(history)
             full_prompt = f"{system_prompt}\n\n## 对话历史\n{history_text}\n\n请输出 THOUGHT 和 ACTION。"
 
-            result = await agent_chat(
-                db=db, agent=agent, message=full_prompt,
-                return_reasoning=False, save_memory=False,
-                session_id=session_id, team_id=team_id,
-            )
+            with TraceContext.span(name=trace_metadata.iter_span_name("react", i+1), metadata=trace_metadata.iter_span_meta(exec_mode="react", iteration=i+1, max_iterations=max_iterations)):
+                result = await agent_chat(
+                    db=db, agent=agent, message=full_prompt,
+                    return_reasoning=False, save_memory=False,
+                    session_id=session_id, team_id=team_id,
+                )
             response = result.get("content", "").strip()
 
             # 解析 THOUGHT 和 ACTION/FINAL_ANSWER
@@ -186,7 +190,7 @@ class ReActExecutor:
             if action:
                 history.append(f"ACTION: {action[:2000]}")
                 # 执行结果反馈
-                if self.enable_self_review and i < self.max_iterations - 1:
+                if enable_self_review and i < max_iterations - 1:
                     # 检查是否需要代码审查
                     observation = self._generate_observation(action, prompt)
                     if observation:

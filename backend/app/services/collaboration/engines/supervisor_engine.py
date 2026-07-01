@@ -47,6 +47,7 @@ async def run(
         team_agents=team_agents,
         available_roles=available_roles,
         team_id=str(team.id),
+        harness=harness,
     )
 
 

@@ -114,10 +114,14 @@ async def _execute_agent_node(
         if isinstance(node.config, dict):
             node_timeout = int(node.config.get("timeout", 600))
 
-        # 检查是否需要非 default 执行模式
+        # 执行模式由 Agent.execution_mode 决定（一处配置、处处生效）；
+        # single_pass / chain_of_thought → 流式 token 推送；
+        # plan_execute / react / rewoo / reflexion / self_consistency → AgentExecutor。
         node_config = node.config if isinstance(node.config, dict) else {}
-        exec_mode = node_config.get("execution_mode", "")
-        use_executor = exec_mode in ("plan_execute", "react")
+        from app.services.collaboration.agent_executor import agent_executor as _exec
+        exec_mode = _exec.agent_execution_mode(agent)
+        _STREAMING_MODES = ("single_pass", "chain_of_thought")
+        use_executor = exec_mode not in _STREAMING_MODES
 
         # 流式执行：逐 token 推送（仅 single_pass 模式用流式）
         content_parts: list[str] = []
@@ -128,40 +132,40 @@ async def _execute_agent_node(
                     db=db, agent=agent, message=prompt,
                     team_id=team_id, session_id=session_id,
                 )
-            async def _stream_with_timeout():
-                async for token in stream:
-                    content_parts.append(token)
-                    await send_fn({
-                        "type": "stream_token",
-                        "source": "langgraph",
-                        "timestamp": datetime.now().isoformat(),
-                        "payload": {
-                            "agent": agent.name,
-                            "token": token,
-                            "token_type": "content_token",
-                            "task_id": str(node.id),
-                            "node_key": node_key,
-                        },
-                    })
+                async def _stream_with_timeout():
+                    async for token in stream:
+                        content_parts.append(token)
+                        await send_fn({
+                            "type": "stream_token",
+                            "source": "langgraph",
+                            "timestamp": datetime.now().isoformat(),
+                            "payload": {
+                                "agent": agent.name,
+                                "token": token,
+                                "token_type": "content_token",
+                                "task_id": str(node.id),
+                                "node_key": node_key,
+                            },
+                        })
 
-            await asyncio.wait_for(_stream_with_timeout(), timeout=node_timeout)
-            content = "".join(content_parts).strip()
-            reasoning = {}
-            latency_ms = int((_t.monotonic() - t_start) * 1000)
-        except Exception:
-            # 流式失败 → 回退到非流式
-            logger.warning(f"Streaming failed for {label}, falling back to non-streaming")
-            result = await asyncio.wait_for(
-                _agent_chat(
-                    db=db, agent=agent, message=prompt,
-                    return_reasoning=True, save_memory=False,
-                    session_id=session_id, team_id=team_id,
-                ),
-                timeout=node_timeout,
-            )
-            latency_ms = int((_t.monotonic() - t_start) * 1000)
-            content = (result.get("content") or "").strip()
-            reasoning = result.get("reasoning", {}) or {}
+                await asyncio.wait_for(_stream_with_timeout(), timeout=node_timeout)
+                content = "".join(content_parts).strip()
+                reasoning = {}
+                latency_ms = int((_t.monotonic() - t_start) * 1000)
+            except Exception:
+                # 流式失败 → 回退到非流式
+                logger.warning(f"Streaming failed for {label}, falling back to non-streaming")
+                result = await asyncio.wait_for(
+                    _agent_chat(
+                        db=db, agent=agent, message=prompt,
+                        return_reasoning=True, save_memory=False,
+                        session_id=session_id, team_id=team_id,
+                    ),
+                    timeout=node_timeout,
+                )
+                latency_ms = int((_t.monotonic() - t_start) * 1000)
+                content = (result.get("content") or "").strip()
+                reasoning = result.get("reasoning", {}) or {}
 
         else:
             # ── AgentExecutor 模式 (plan_execute / react) ──
@@ -211,6 +215,7 @@ async def _execute_agent_node(
                 "latency": latency_ms,
                 "task_id": str(node.id),
                 "node_key": node_key,
+                "exec_mode": exec_mode,
             },
         })
         if reasoning:
@@ -225,6 +230,8 @@ async def _execute_agent_node(
                     "tool_calls": reasoning.get("tool_calls", []),
                     "decision_summary": f"执行节点 {label}",
                     "latency": latency_ms,
+                    "exec_mode": exec_mode,
+                    "iterations": reasoning.get("iterations", 1),
                 },
             })
 

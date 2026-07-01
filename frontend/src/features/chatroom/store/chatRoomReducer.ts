@@ -213,6 +213,7 @@ export function chatRoomReducer(
         taskId: p.task_id,
         content: p.content,
         reasoning,
+        execMode: (p as any).exec_mode || reasoning?.execMode || '',
         model: p.model,
         latency: p.latency,
         artifactIds: [],
@@ -273,7 +274,7 @@ export function chatRoomReducer(
         [p.agent]: detail,
       };
       // 若已有该 agent 的 message（部分场景 reasoning 在 message 之后），就 patch 进去
-      const newMessages = patchLastAgentMessage(state.messages, p.agent, { reasoning: detail });
+      const newMessages = patchLastAgentMessage(state.messages, p.agent, { reasoning: detail, execMode: detail.execMode || '' });
       return {
         ...state,
         messages: newMessages,

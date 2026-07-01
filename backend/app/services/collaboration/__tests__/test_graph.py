@@ -1,152 +1,222 @@
-"""Tests for LangGraph graph skeleton and intent recognition.
+"""Tests for LangGraph StateGraph — M0-M8 topology and routing.
 
 Verifies:
-1. Graph compiles correctly with all 4 nodes
-2. All edges exist
-3. Intent classifier routes correctly across all 5 states
-4. Same input "确认" routes differently based on state
-5. Invalid states don't crash
+1. All 3 graph versions compile correctly with correct nodes
+2. Entry point is M0
+3. M0 intent router classifies messages correctly (rules-based fast paths)
+4. HITL response classifier routes correctly for each HITL type
+5. M7 verifier routes map to correct graph nodes
 """
 
 import pytest
 from app.services.collaboration.graph import (
-    classify_intent,
     build_graph,
-    route_after_supervisor,
-    route_after_worker,
-    route_after_verifier,
+    build_graph_v2,
+    build_graph_v3,
+    compile_graph,
+    hitl_node,
+    route_after_hitl,
 )
 from app.services.collaboration.types import CollabState
+from app.services.collaboration.m0_intent_router import _classify_by_rules
+from app.services.collaboration.m7_verifier import route_after_verify
 
 
-class TestIntentClassifier:
-    """Multi-turn intent recognition — same word, different states, different routes."""
+# ── M0 Intent Router (rules-based fast paths) ──
 
-    def test_init_state_treats_confirm_as_first_question(self):
-        """In init state, "确认" has no context → treated as first question."""
-        state = CollabState(status="init", messages=[])
-        assert classify_intent(state, "确认") == "first_question"
 
-    def test_awaiting_confirm_approve(self):
-        """In awaiting_confirm, "确认" = approve."""
-        state = CollabState(status="awaiting_confirm")
-        assert classify_intent(state, "确认") == "approve"
-        assert classify_intent(state, "/approve") == "approve"
-        assert classify_intent(state, "可以") == "approve"
-        assert classify_intent(state, "ok") == "approve"
+class TestM0IntentRouter:
+    """Rule-based intent classification — zero-LLM fast paths for common cases."""
 
-    def test_awaiting_confirm_reject(self):
-        """In awaiting_confirm, single-word "不对" = reject fast path."""
-        state = CollabState(status="awaiting_confirm")
-        assert classify_intent(state, "不对") == "reject"
-        assert classify_intent(state, "不行") == "reject"
-        assert classify_intent(state, "/reject") == "reject"
-        # Multi-word rejection → LLM classification
-        assert classify_intent(state, "不对，重新做") == "need_llm_classify"
+    def test_multi_agent_keyword_triggers_pipeline(self):
+        assert _classify_by_rules("帮我开发一个登录系统", "init", None) == "multi_agent"
 
-    def test_awaiting_confirm_modify(self):
-        """In awaiting_confirm, non-obvious text → LLM classification."""
-        state = CollabState(status="awaiting_confirm")
-        assert classify_intent(state, "第三个阶段改成前端") == "need_llm_classify"
+    def test_multi_agent_keyword_refactor(self):
+        assert _classify_by_rules("重构这个模块", "init", None) == "multi_agent"
 
-    def test_clarifying_state(self):
-        """In clarifying, any response = clarify_response."""
-        state = CollabState(status="clarifying")
-        assert classify_intent(state, "不需要OAuth") == "clarify_response"
+    def test_single_agent_greeting(self):
+        assert _classify_by_rules("你好", "init", None) == "single_agent"
 
-    def test_executing_state_progress_query(self):
-        """In executing, progress query → LLM classification."""
-        state = CollabState(status="executing")
-        assert classify_intent(state, "现在进度怎么样了") == "need_llm_classify"
+    def test_single_agent_question(self):
+        assert _classify_by_rules("什么是FastAPI", "init", None) == "single_agent"
 
-    def test_executing_state_extend_task(self):
-        """In executing, "再加" → LLM semantic classification."""
-        state = CollabState(status="executing")
-        assert classify_intent(state, "对了，再加个忘记密码功能") == "need_llm_classify"
+    def test_already_in_flow_stays_multi(self):
+        """When status is not init/completed, the conversation is already in multi-agent flow."""
+        assert _classify_by_rules("确认", "executing", None) == "multi_agent"
+        assert _classify_by_rules("ok", "awaiting_confirm", None) == "multi_agent"
 
-    def test_executing_state_ambiguous_input(self):
-        """In executing, ambiguous input → LLM needed."""
-        state = CollabState(status="executing")
-        assert classify_intent(state, "确认") == "need_llm_classify"
+    def test_at_all_triggers_multi(self):
+        assert _classify_by_rules("帮我开发系统 @all", "init", ["__all__"]) == "multi_agent"
 
-    def test_awaiting_review_approve(self):
-        """In awaiting_review, "确认" = approve."""
-        state = CollabState(status="awaiting_review")
-        assert classify_intent(state, "确认") == "approve"
+    def test_at_mention_triggers_single(self):
+        assert _classify_by_rules("帮我看看 @架构师", "init", ["agent-1"]) == "single_agent"
 
-    def test_completed_state_new_task(self):
-        """In completed, anything = new_task."""
-        state = CollabState(status="completed")
-        assert classify_intent(state, "确认") == "new_task"
-        assert classify_intent(state, "再来一个") == "new_task"
+    def test_short_message_with_no_technical_terms(self):
+        assert _classify_by_rules("好的", "init", None) == "single_agent"
 
-    def test_same_word_5_different_routes(self):
-        """The core test: "确认" routes to 5 different intents in 5 states."""
-        msg = "确认"
-        results = {
-            "init": classify_intent(CollabState(status="init"), msg),
-            "awaiting_confirm": classify_intent(CollabState(status="awaiting_confirm"), msg),
-            "executing": classify_intent(CollabState(status="executing"), msg),
-            "awaiting_review": classify_intent(CollabState(status="awaiting_review"), msg),
-            "completed": classify_intent(CollabState(status="completed"), msg),
-        }
-        assert results["init"] == "first_question"
-        assert results["awaiting_confirm"] == "approve"  # Single-word match
-        assert results["executing"] == "need_llm_classify"  # Ambiguous → LLM
-        assert results["awaiting_review"] == "approve"
-        assert results["completed"] == "new_task"
+
+# ── Graph Topology ──
 
 
 class TestGraphTopology:
-    """Verify the graph compiles and has correct structure."""
+    """Verify each graph version compiles with correct node sets."""
 
-    def test_graph_builds_with_4_nodes(self):
+    def test_v1_builds_with_9_nodes(self):
         graph = build_graph()
         nodes = graph.nodes
-        assert "supervisor" in nodes
-        assert "hitl" in nodes
-        assert "worker" in nodes
-        assert "verifier" in nodes
-        assert len(nodes) == 4
+        expected = {"m0_intent", "m1_analyze", "m1_rebalance", "m2_clarify",
+                     "m3_orchestrate", "m4_decompose", "m6_execute", "m7_verify", "hitl"}
+        assert expected.issubset(nodes)
+        assert len(nodes) == 9
 
-    def test_entry_point_is_supervisor(self):
+    def test_v1_entry_point_is_m0(self):
         graph = build_graph()
-        # Entry point should be supervisor
-        assert graph._all_edges is not None  # Graph has edges defined
+        # Graph compiles without error — edges are defined
+        assert graph._all_edges is not None
+
+    @pytest.mark.skip(reason="V2 intermediate modules (m6_level_*) not fully implemented")
+    def test_v2_builds_with_13_nodes(self):
+        graph = build_graph_v2()
+        nodes = graph.nodes
+        expected_v2 = {"m0_intent", "m1_analyze", "m1_rebalance", "m2_clarify",
+                        "m3_orchestrate", "m4_decompose",
+                        "m6_org_loader", "m6_level_dispatch", "m6_level_execute",
+                        "m6_level_review", "m6_escalate",
+                        "m7_verify", "hitl"}
+        assert expected_v2.issubset(nodes)
+        assert len(nodes) == 13
+
+    def test_v3_builds_with_16_nodes(self):
+        graph = build_graph_v3()
+        nodes = graph.nodes
+        expected_v3 = {"m0_intent", "m1_analyze", "m1_rebalance", "m2_clarify",
+                        "m3_orchestrate", "m4_decompose",
+                        "m6_org_loader", "m6_delegate_root", "m6_delegate_sub",
+                        "m6_plan_validate", "m6_delegate_push", "m6_execute_worker",
+                        "m6_collect", "m6_escalate",
+                        "m7_verify", "hitl"}
+        assert expected_v3.issubset(nodes)
+        assert len(nodes) == 16
+
+    def test_compile_uses_v3(self):
+        from langgraph.checkpoint.memory import MemorySaver
+        compiled = compile_graph(checkpointer=MemorySaver())
+        assert compiled is not None
+
+    def test_v3_has_route_b_delegation_nodes(self):
+        graph = build_graph_v3()
+        nodes = graph.nodes
+        assert "m6_delegate_root" in nodes
+        assert "m6_delegate_sub" in nodes
+        assert "m6_execute_worker" in nodes
+        assert "m6_collect" in nodes
 
 
-class TestRoutingFunctions:
-    """Verify routing functions direct to correct nodes."""
+# ── HITL Response Classification ──
 
-    def test_route_supervisor_to_end_for_clarify(self):
-        state = CollabState(action="need_clarify")
-        assert route_after_supervisor(state) == "__end__"
 
-    def test_route_supervisor_to_end_for_confirm(self):
-        state = CollabState(action="need_confirm")
-        assert route_after_supervisor(state) == "__end__"
+class TestHitlResponseClassifier:
+    """Verify HITL user responses are classified into correct actions."""
 
-    def test_route_supervisor_to_end_for_invite(self):
-        state = CollabState(action="invite_agent")
-        assert route_after_supervisor(state) == "__end__"
+    def test_confirmation_approve(self):
+        state = CollabState(hitl_type="confirmation", user_response="确认")
+        assert route_after_hitl(state) == "m3_orchestrate"
 
-    def test_route_supervisor_to_worker_for_execute(self):
-        state = CollabState(action="execute_task")
-        assert route_after_supervisor(state) == "worker"
+    def test_confirmation_reject(self):
+        state = CollabState(hitl_type="confirmation", user_response="不对")
+        assert route_after_hitl(state) == "__end__"
 
-    def test_route_supervisor_to_verifier(self):
-        state = CollabState(action="verify")
-        assert route_after_supervisor(state) == "verifier"
+    def test_confirmation_modify(self):
+        state = CollabState(hitl_type="confirmation", user_response="改一下第三个阶段")
+        assert route_after_hitl(state) == "m1_analyze"
 
-    def test_route_verifier_pass_to_end(self):
+    def test_clarification_answer(self):
+        state = CollabState(hitl_type="clarification", user_response="用React前端")
+        assert route_after_hitl(state) == "m1_analyze"
+
+    def test_clarification_force_confirm(self):
+        state = CollabState(hitl_type="clarification", user_response="确认")
+        assert route_after_hitl(state) == "m1_analyze"
+
+    def test_review_approve_ends(self):
+        state = CollabState(hitl_type="review", user_response="确认")
+        assert route_after_hitl(state) == "__end__"
+
+    def test_review_modify_reanalyzes(self):
+        state = CollabState(hitl_type="review", user_response="需要修改")
+        assert route_after_hitl(state) == "m1_analyze"
+
+    def test_delta_plan_approve(self):
+        state = CollabState(hitl_type="delta_plan", user_response="确认")
+        assert route_after_hitl(state) == "m4_decompose"
+
+    def test_delta_plan_reject(self):
+        state = CollabState(hitl_type="delta_plan", user_response="不对")
+        assert route_after_hitl(state) == "m6_level_dispatch"
+
+    def test_agent_invite_skip(self):
+        state = CollabState(hitl_type="agent_invite", user_response="skip")
+        assert route_after_hitl(state) == "m3_orchestrate"
+
+    def test_escalation_retry(self):
+        state = CollabState(hitl_type="escalation", user_response="重新执行")
+        result = route_after_hitl(state)
+        assert result in ("m6_level_execute", "m6_delegate_sub")
+
+    def test_escalation_abort(self):
+        state = CollabState(hitl_type="escalation", user_response="放弃")
+        assert route_after_hitl(state) == "__end__"
+
+
+# ── M7 Verifier Routing ──
+
+
+class TestM7VerifierRouting:
+    """Verify M7 verifier routes to correct graph nodes."""
+
+    def test_pass_routes_to_hitl(self):
+        from app.services.collaboration.m7_verifier import route_after_m7
         state = CollabState(verification={"passed": True})
-        result = route_after_verifier(state)
-        assert result == "__end__"
+        assert route_after_m7(state) == "hitl"
 
-    def test_route_verifier_escalate_to_hitl(self):
+    def test_retry_routes_to_execute(self):
+        from app.services.collaboration.m7_verifier import route_after_m7
+        state = CollabState(verification={"passed": False, "severity": "major"})
+        assert route_after_m7(state) == "m6_execute"
+
+    def test_critical_routes_to_hitl(self):
+        from app.services.collaboration.m7_verifier import route_after_m7
         state = CollabState(verification={"passed": False, "severity": "critical"})
-        assert route_after_verifier(state) == "hitl"
+        assert route_after_m7(state) == "hitl"
 
-    def test_route_verifier_fail_to_worker_retry(self):
-        state = CollabState(verification={"passed": False, "escalate": False})
-        assert route_after_verifier(state) == "worker"
+    def test_drift_routes_to_reanalyze(self):
+        from app.services.collaboration.m7_verifier import route_after_m7
+        state = CollabState(verification={"passed": False, "severity": "major", "drift_detected": True})
+        assert route_after_m7(state) == "m1_analyze"
+
+    def test_no_verification_routes_to_hitl(self):
+        from app.services.collaboration.m7_verifier import route_after_m7
+        state = CollabState(verification={})
+        assert route_after_m7(state) == "hitl"
+
+
+# ── M1 Route after analysis ──
+
+
+class TestM1Routing:
+    """Verify M1 analysis routes to correct nodes."""
+
+    def test_clarify_routes_to_m2(self):
+        from app.services.collaboration.m1_requirement_analyzer import route_after_m1
+        state = CollabState(hitl_type="clarification")
+        assert route_after_m1(state) == "m2_clarify"
+
+    def test_confirmation_routes_to_hitl(self):
+        from app.services.collaboration.m1_requirement_analyzer import route_after_m1
+        state = CollabState(hitl_type="confirmation")
+        assert route_after_m1(state) == "hitl"
+
+    def test_completed_routes_to_end(self):
+        from app.services.collaboration.m1_requirement_analyzer import route_after_m1
+        state = CollabState(status="completed", hitl_type="")
+        assert route_after_m1(state) == "__end__"

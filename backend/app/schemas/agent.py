@@ -10,6 +10,10 @@ class AgentCreate(BaseModel):
     persona_id: uuid.UUID
     model_id: uuid.UUID
     tool_ids: Optional[list[uuid.UUID]] = None
+    # single_pass | plan_execute | react | chain_of_thought | rewoo | reflexion | self_consistency
+    execution_mode: Optional[str] = "single_pass"
+    # 模式专属参数（JSONB），如 {enable_review, min_score} / {max_iterations, enable_self_review}
+    execution_config: Optional[dict] = None
 
 
 class AgentUpdate(BaseModel):
@@ -18,6 +22,8 @@ class AgentUpdate(BaseModel):
     model_id: Optional[uuid.UUID] = None
     tool_ids: Optional[list[uuid.UUID]] = None
     status: Optional[str] = None
+    execution_mode: Optional[str] = None
+    execution_config: Optional[dict] = None
 
 
 class AgentResponse(BaseModel):
@@ -27,6 +33,8 @@ class AgentResponse(BaseModel):
     persona_id: uuid.UUID
     tools: Optional[list[str]] = None
     status: str
+    execution_mode: str = "single_pass"
+    execution_config: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

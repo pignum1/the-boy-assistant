@@ -867,21 +867,36 @@ async def _execute_single_agent(
             except Exception:
                 pass
 
-            llm_result = await agent_chat(
-                db=db, agent=agent, message=user_message,
-                return_reasoning=True, save_memory=False,
+            # 统一走 AgentExecutor：模式由 Agent.execution_mode 决定
+            # （直接聊天也遵循 Agent 配置，与管道一致）
+            from app.services.collaboration.agent_executor import agent_executor as _exec
+            exec_result = await _exec.execute(
+                prompt=user_message, agent=agent, db=db,
                 session_id=session_id, team_id=team_id,
+                node_key="single_agent",
             )
 
-            content = llm_result.get("content", "")
-            reasoning = llm_result.get("reasoning", {})
-            tool_results = llm_result.get("tool_results", [])
+            content = exec_result.get("content", "")
+            reasoning = exec_result.get("reasoning", {}) or {}
+            exec_mode = exec_result.get("exec_mode", "single_pass")
 
-            # ── Extract code blocks and write to workspace ──
-            # Determine if task is coding-related (for code extraction)
+            # ── 文件写入策略（防双写）──
+            # react / rewoo 模式：executor 已自行写文件到工作区并记入 reasoning.tool_calls，
+            #   这里直接汇总，不再二次抽取代码块。
+            # 其他模式：沿用旧的"抽取代码块写盘"逻辑。
             _is_coding_task = _detect_coding_intent(user_message, analysis)
             files_written: list[dict] = []
-            if _is_coding_task and session_id:
+
+            if exec_mode in ("react", "rewoo"):
+                tool_calls = reasoning.get("tool_calls", []) if isinstance(reasoning, dict) else []
+                for tc in tool_calls:
+                    if not isinstance(tc, dict):
+                        continue
+                    if "file" in (tc.get("tool") or "").lower() and tc.get("success") is not False:
+                        params = tc.get("params") or {}
+                        path = params.get("path") or params.get("file_path") or params.get("name") or "unknown"
+                        files_written.append({"name": path.split("/")[-1], "status": "created", "path": path})
+            elif _is_coding_task and session_id:
                 files_written = await _write_code_to_workspace(
                     session_id, user_message, content,
                 )
@@ -889,13 +904,6 @@ async def _execute_single_agent(
             # ── Build display content: code + file summary ──
             display_content = content
             files_changed = []
-
-            # If agent wrote files via tools but response is just a brief summary (no code),
-            # read file content and include it in the response
-            if tool_results and not _extract_code_blocks(content) and session_id:
-                tool_file_content = _read_workspace_files(session_id, [f["name"] for f in files_written] if files_written else [])
-                if tool_file_content:
-                    display_content = f"{content}\n\n{tool_file_content}"
 
             # If we extracted and wrote code blocks, append file summary
             if files_written:
@@ -909,8 +917,8 @@ async def _execute_single_agent(
                 "_content": display_content,
                 "_agent_name": agent.name or "Agent",
                 "_reasoning": reasoning,
-                "_model": llm_result.get("model", ""),
-                "_latency": llm_result.get("latency", 0),
+                "_model": reasoning.get("model_routing", {}).get("selected_model", "") if isinstance(reasoning, dict) else "",
+                "_latency": reasoning.get("latency", 0) if isinstance(reasoning, dict) else 0,
                 "files_changed": files_changed,
             }
 

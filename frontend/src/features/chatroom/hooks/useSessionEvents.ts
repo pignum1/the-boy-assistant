@@ -377,6 +377,8 @@ export function useSessionEvents({ sessionId, onMessage, maxRetries = 5 }: UseSe
 
           // ── 推理完成 ──
           case 'reasoning_complete': {
+            const execMode = (p.exec_mode as string) || '';
+            const iterations = (p.iterations as number) || 1;
             const reasoningData: ReasoningTrace = {
               agent: p.agent || '',
               model_routing: p.model_routing || {},
@@ -389,6 +391,8 @@ export function useSessionEvents({ sessionId, onMessage, maxRetries = 5 }: UseSe
               supervisor_analysis: p.supervisor_analysis,
               dispatch_guidance: p.dispatch_guidance,
               latency: p.latency,
+              exec_mode: execMode,
+              iterations,
             };
             pushTrace(setTraceEntries, 'reasoning', p.agent || '', p.decision_summary || '推理完成', p.thinking_steps as string, {
               tool_count: p.tool_calls?.length,
@@ -399,6 +403,8 @@ export function useSessionEvents({ sessionId, onMessage, maxRetries = 5 }: UseSe
               prompt_length: p.prompt_length,
               supervisor_analysis: p.supervisor_analysis,
               latency: p.latency,
+              exec_mode: execMode,
+              iterations,
             });
 
             // 保存到 pending — agent_message 事件会使用它
@@ -421,6 +427,7 @@ export function useSessionEvents({ sessionId, onMessage, maxRetries = 5 }: UseSe
                 thinking: prev.thinking ? {
                   ...prev.thinking,
                   model,
+                  execMode,
                   toolCalls: prev.thinking.toolCalls.map(tc => ({ ...tc, status: 'done' as const })),
                 } : prev.thinking,
               };

@@ -1,5 +1,5 @@
 """Tests for M3 AgentOrchestrator."""
-from app.services.collaboration.agent_orchestrator import (
+from app.services.collaboration.m3_agent_orchestrator import (
     check_agent_availability,
     generate_missing_agent_message,
 )

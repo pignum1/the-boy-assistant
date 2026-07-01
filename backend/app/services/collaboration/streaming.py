@@ -69,6 +69,7 @@ async def stream_to_websocket(
     team_agents: list = None,
     available_roles: list = None,
     team_id: str = "",
+    harness=None,  # Harness 横切拦截器（可选）
 ) -> None:
     """Stream LangGraph events to WebSocket client.
 
@@ -77,6 +78,10 @@ async def stream_to_websocket(
     from .types import CollabState
 
     session_id = config.get("configurable", {}).get("thread_id", "")
+    # Store harness in config so graph nodes can access it via RunnableConfig
+    if harness is not None:
+        config.setdefault("configurable", {})["harness"] = harness
+
     initial_state: dict[str, Any] = {
         "messages": [{"role": "user", "content": user_message}],
         "team_id": team_id,
@@ -218,6 +223,8 @@ async def stream_to_websocket(
                             "tool_calls": reasoning_data.get("tool_calls", []),
                             "decision_summary": reasoning_data.get("supervisor_analysis", ""),
                             "latency": latency,
+                            "exec_mode": reasoning_data.get("exec_mode", ""),
+                            "iterations": reasoning_data.get("iterations", 1),
                         },
                     })
 

@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 from app.services.agent_chat import agent_chat
+from app.services.trace_context import TraceContext, trace_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +71,15 @@ class PlanAndExecuteExecutor:
     """Plan-and-Execute 执行器。
 
     用法:
-        executor = PlanAndExecuteExecutor(enable_review=True, min_score=70)
-        result = await executor.execute(prompt=full_prompt, agent=agent, db=db)
+        executor = PlanAndExecuteExecutor()
+        result = await executor.execute(
+            prompt=full_prompt, agent=agent, db=db,
+            config={"enable_review": True, "min_score": 70},
+        )
     """
 
-    def __init__(self, enable_review: bool = True, min_score: int = 70):
-        self.enable_review = enable_review
-        self.min_score = min_score
+    def __init__(self):
+        pass
 
     async def execute(
         self,
@@ -85,7 +88,11 @@ class PlanAndExecuteExecutor:
         db,
         session_id: str = "",
         team_id: str = "",
+        config: dict | None = None,
     ) -> dict[str, Any]:
+        # 从 config 读取参数，兜底默认值
+        enable_review = (config or {}).get("enable_review", True)
+        min_score = (config or {}).get("min_score", 70)
         """执行 Plan-and-Execute 流程。
 
         Returns:
@@ -100,16 +107,17 @@ class PlanAndExecuteExecutor:
 
         # ── Phase 1: Plan（初始分析）──
         logger.info("[Plan&Execute] Phase 1: Plan")
-        plan_result = await agent_chat(
-            db=db, agent=agent, message=prompt,
-            return_reasoning=True, save_memory=False,
-            session_id=session_id, team_id=team_id,
-        )
+        with TraceContext.span(name=trace_metadata.phase_span_name("plan_execute", "Plan", 1), metadata=trace_metadata.phase_span_meta(mode="plan_execute", phase_name="Plan", phase_index=1, total_phases=3)):
+            plan_result = await agent_chat(
+                db=db, agent=agent, message=prompt,
+                return_reasoning=True, save_memory=False,
+                session_id=session_id, team_id=team_id,
+            )
         iterations += 1
         content = plan_result.get("content", "")
         reasoning = plan_result.get("reasoning", {}) or {}
 
-        if not self.enable_review:
+        if not enable_review:
             return {
                 "content": content,
                 "reasoning": reasoning,
@@ -119,12 +127,13 @@ class PlanAndExecuteExecutor:
 
         # ── Phase 2: Review（自我审查）──
         logger.info("[Plan&Execute] Phase 2: Review")
-        review_prompt = REVIEW_PROMPT.format(report=content[:8000])
-        review_result = await agent_chat(
-            db=db, agent=agent, message=review_prompt,
-            return_reasoning=False, save_memory=False,
-            session_id=session_id, team_id=team_id,
-        )
+        with TraceContext.span(name=trace_metadata.phase_span_name("plan_execute", "Review", 2), metadata=trace_metadata.phase_span_meta(mode="plan_execute", phase_name="Review", phase_index=2, total_phases=3)):
+            review_prompt = REVIEW_PROMPT.format(report=content[:8000])
+            review_result = await agent_chat(
+                db=db, agent=agent, message=review_prompt,
+                return_reasoning=False, save_memory=False,
+                session_id=session_id, team_id=team_id,
+            )
         iterations += 1
 
         # 解析审查结果
@@ -147,7 +156,7 @@ class PlanAndExecuteExecutor:
         logger.info(f"[Plan&Execute] Review: score={score}, verdict={verdict}, gaps={len(gaps)}")
 
         # 如果报告足够好 → 直接返回
-        if score >= self.min_score and verdict == "good":
+        if score >= min_score and verdict == "good":
             return {
                 "content": content,
                 "reasoning": reasoning,
@@ -158,19 +167,20 @@ class PlanAndExecuteExecutor:
         # ── Phase 3: Supplement（补充完善）──
         if gaps:
             logger.info(f"[Plan&Execute] Phase 3: Supplement ({len(gaps)} gaps)")
-            gaps_text = "\n".join(
-                f"{i+1}. [{g['section']}] {g['issue']}\n   建议: {g['suggestion']}"
-                for i, g in enumerate(gaps)
-            )
-            supplement_prompt = SUPPLEMENT_PROMPT.format(
-                report=content[:6000],
-                gaps=gaps_text,
-            )
-            supplement_result = await agent_chat(
-                db=db, agent=agent, message=supplement_prompt,
-                return_reasoning=False, save_memory=False,
-                session_id=session_id, team_id=team_id,
-            )
+            with TraceContext.span(name=trace_metadata.phase_span_name("plan_execute", "Supplement", 3), metadata=trace_metadata.phase_span_meta(mode="plan_execute", phase_name="Supplement", phase_index=3, total_phases=3)):
+                gaps_text = "\n".join(
+                    f"{i+1}. [{g['section']}] {g['issue']}\n   建议: {g['suggestion']}"
+                    for i, g in enumerate(gaps)
+                )
+                supplement_prompt = SUPPLEMENT_PROMPT.format(
+                    report=content[:6000],
+                    gaps=gaps_text,
+                )
+                supplement_result = await agent_chat(
+                    db=db, agent=agent, message=supplement_prompt,
+                    return_reasoning=False, save_memory=False,
+                    session_id=session_id, team_id=team_id,
+                )
             iterations += 1
             supplement_text = supplement_result.get("content", "")
 

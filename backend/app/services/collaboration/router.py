@@ -13,6 +13,7 @@ import logging
 from typing import Callable, Awaitable
 
 from app.services.collaboration.engines import ENGINES, DEFAULT_ENGINE
+from app.services.trace_context import TraceContext, trace_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +49,29 @@ async def dispatch(
 ) -> None:
     """启动协作。根据 team.collaboration_mode 选择引擎。（可选注入 Harness）"""
     mode = (team.collaboration_mode or DEFAULT_ENGINE).lower()
+    team_id = str(getattr(team, "id", ""))
+    team_name = getattr(team, "name", "unknown")
     logger.info("[router] dispatch session=%s mode=%s", session_id[:8], mode)
 
-    engine = _resolve_engine(mode)
-    await engine.run(
+    with TraceContext.create_trace(
+        name=trace_metadata.trace_name(mode, team_name, user_message),
         session_id=session_id,
-        team=team,
-        user_message=user_message,
-        team_agents=team_agents,
-        available_roles=available_roles,
-        send_fn=send_fn,
-        harness=harness,
-    )
+        metadata=trace_metadata.trace_meta(
+            mode=mode, team_name=team_name, team_id=team_id,
+            session_id=session_id, user_message=user_message,
+        ),
+        tags=trace_metadata.trace_tags(mode, team_name),
+    ):
+        engine = _resolve_engine(mode)
+        await engine.run(
+            session_id=session_id,
+            team=team,
+            user_message=user_message,
+            team_agents=team_agents,
+            available_roles=available_roles,
+            send_fn=send_fn,
+            harness=harness,
+        )
 
 
 async def dispatch_resume(
@@ -71,17 +83,28 @@ async def dispatch_resume(
 ) -> None:
     """HITL resume，按 mode 分流。（可选注入 Harness）"""
     mode = (team.collaboration_mode or DEFAULT_ENGINE).lower()
+    team_id = str(getattr(team, "id", ""))
     logger.info("[router] resume session=%s mode=%s", session_id[:8], mode)
 
-    # 标准化响应格式
-    if isinstance(user_response, str):
-        user_response = {
-            "hitl_type": "select",
-            "values": [user_response],
-        }
+    with TraceContext.create_trace(
+        name=f"[{mode}] {getattr(team, 'name', 'unknown')} | HITL resume",
+        session_id=session_id,
+        metadata=trace_metadata.trace_meta(
+            mode=mode, team_name=getattr(team, "name", "unknown"),
+            team_id=team_id, session_id=session_id,
+            user_message="HITL resume",
+        ),
+        tags=trace_metadata.trace_tags(mode, getattr(team, "name", "unknown")),
+    ):
+        # 标准化响应格式
+        if isinstance(user_response, str):
+            user_response = {
+                "hitl_type": "select",
+                "values": [user_response],
+            }
 
-    engine = _resolve_engine(mode)
-    await engine.resume(session_id, user_response, send_fn, harness=harness)
+        engine = _resolve_engine(mode)
+        await engine.resume(session_id, user_response, send_fn, harness=harness)
 
 
 def get_engine_info(team_or_mode) -> dict:

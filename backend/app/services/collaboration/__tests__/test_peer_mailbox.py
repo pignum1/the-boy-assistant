@@ -1,7 +1,7 @@
 """Tests for M8 PeerMailbox — agent-to-agent communication."""
 
 import pytest
-from app.services.collaboration.peer_mailbox import PeerMailbox
+from app.services.collaboration.m8_peer_mailbox import PeerMailbox
 
 
 class TestPeerMailbox:
@@ -68,9 +68,11 @@ class TestPeerMailbox:
 
         formatted = self.mailbox.format_for_context("s1", "前端")
 
-        assert "来自其他 Agent 的消息" in formatted
-        assert "后端" in formatted
-        assert "API路径不对" in formatted
+        # Returns list[dict] for M5 context injection
+        assert isinstance(formatted, list)
+        assert len(formatted) >= 1
+        assert any(msg["from"] == "后端" for msg in formatted)
+        assert any("API路径不对" in msg["content"] for msg in formatted)
 
     def test_session_isolation(self):
         self.mailbox.send("s1", "A", "B", "share", "s1 message")

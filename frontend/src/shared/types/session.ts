@@ -95,6 +95,8 @@ export interface ReasoningTrace {
   supervisor_analysis?: string;  // 主管的分析和指派过程
   dispatch_guidance?: string;    // 主管的执行指导
   latency?: number;              // 执行耗时
+  exec_mode?: string;            // single_pass | chain_of_thought | plan_execute | rewoo | react | reflexion | self_consistency
+  iterations?: number;           // LLM 调用次数 / 循环轮次
 }
 
 /** ── 编排流水线类型 ── */
@@ -128,6 +130,8 @@ export interface OrchestrationThinking {
   elapsed?: number;
   /** 工具调用记录 */
   toolCalls: Array<{ tool: string; status: 'running' | 'done' | 'error'; detail?: string }>;
+  /** 执行模式 */
+  execMode?: string;
 }
 
 /** 编排卡片整体状态 */
@@ -180,6 +184,8 @@ export interface DelegationNode {
     model?: string;
     elapsed: number;
     toolCalls: Array<{ tool: string; status: 'running' | 'done' | 'error'; detail?: string }>;
+    execMode?: string;
+    iterations?: number;
   } | null;
   /** 产出物列表 */
   outputs: Array<{ name: string; size: string; type: string }>;

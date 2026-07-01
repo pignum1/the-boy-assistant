@@ -15,6 +15,16 @@ const ROLE_MAP: Record<string, { label: string; color: string }> = {
   executor:        { label: '执行者',   color: '#64748b' },
 };
 
+const MODE_LABEL_MAP: Record<string, { label: string; icon: string; color: string }> = {
+  single_pass:        { label: '单次',       icon: '⚡', color: '#64748b' },
+  chain_of_thought:   { label: '思维链',     icon: '🔗', color: '#8b5cf6' },
+  plan_execute:       { label: '规划-执行',   icon: '📋', color: '#3b82f6' },
+  rewoo:              { label: 'ReWOO',      icon: '📦', color: '#10b981' },
+  react:              { label: 'ReAct',      icon: '🔄', color: '#f59e0b' },
+  reflexion:          { label: 'Reflexion',  icon: '🪞', color: '#ec4899' },
+  self_consistency:   { label: '自一致性',    icon: '🗳️', color: '#06b6d4' },
+};
+
 const STATUS_MAP: Record<string, { label: string; icon: string; color: string }> = {
   idle:      { label: '空闲',   icon: '⚪', color: '#475569' },
   analyzing: { label: '分析中', icon: '🔄', color: '#f59e0b' },
@@ -59,6 +69,14 @@ export function AgentDetailPanel({ node, onClose }: AgentDetailPanelProps) {
           <div style={thinkingMetaStyle}>
             {node.thinking.model && <span>🧠 {node.thinking.model}</span>}
             {node.thinking.elapsed > 0 && <span>⏱️ {node.thinking.elapsed}s</span>}
+            {node.thinking.execMode && MODE_LABEL_MAP[node.thinking.execMode] && (
+              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${MODE_LABEL_MAP[node.thinking.execMode].color}22`, color: MODE_LABEL_MAP[node.thinking.execMode].color, border: `1px solid ${MODE_LABEL_MAP[node.thinking.execMode].color}44` }}>
+                {MODE_LABEL_MAP[node.thinking.execMode].icon} {MODE_LABEL_MAP[node.thinking.execMode].label}
+              </span>
+            )}
+            {node.thinking.iterations != null && node.thinking.iterations > 1 && (
+              <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>🔄 {node.thinking.iterations}次调用</span>
+            )}
           </div>
           <div style={thinkingBodyStyle}>
             {node.thinking.summary}

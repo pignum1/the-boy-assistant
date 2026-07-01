@@ -159,6 +159,7 @@ export function updateThinkingAgentSummary(
 export function reasoningPayloadToDetail(
   payload: ReasoningCompletePayload,
 ): ReasoningDetail {
+  const p = payload as Record<string, unknown>;
   return {
     supervisorAnalysis: payload.supervisor_analysis,
     thinkingSteps: payload.thinking_steps,
@@ -175,7 +176,17 @@ export function reasoningPayloadToDetail(
       status: (tc.success ? 'done' : 'error') as 'running' | 'done' | 'error',
       detail: tc.output ?? (tc.params ? JSON.stringify(tc.params) : undefined),
     })),
-  };
+    execMode: payload.exec_mode || '',
+    iterations: payload.iterations || 0,
+    // 模式专属数据透传
+    history: p.history as string[] | undefined,
+    reflections: p.reflections as Array<Record<string,unknown>> | undefined,
+    samples: p.samples as string[] | undefined,
+    merged: p.merged as boolean | undefined,
+    plan: p.plan as Record<string,unknown> | undefined,
+    tool_results: p.tool_results as Array<Record<string,unknown>> | undefined,
+    review_score: p.review_score as number | undefined,
+  } as ReasoningDetail;
 }
 
 // ── pending reasoning 暂存 ──

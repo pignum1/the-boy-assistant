@@ -302,14 +302,16 @@ async def run(
 
                 try:
                     t_start = _t.monotonic()
-                    result = await agent_chat(
-                        db=db, agent=member["_agent"], message=prompt,
-                        return_reasoning=True, save_memory=False,
-                        session_id=session_id, team_id=str(team.id))
+                    from app.services.collaboration.agent_executor import agent_executor as _exec
+                    result = await _exec.execute(
+                        prompt=prompt, agent=member["_agent"], db=db,
+                        session_id=session_id, team_id=str(team.id),
+                        node_key="swarm_agent",
+                    )
                     latency_ms = int((_t.monotonic() - t_start) * 1000)
                     content = (result.get("content") or "").strip()
                     reasoning = result.get("reasoning", {}) or {}
-                    logger.info(f"[swarm] agent_chat result for {name}: content_len={len(content)}")
+                    logger.info(f"[swarm] agent_chat result for {name}: content_len={len(content)} exec_mode={result.get('exec_mode','?')}")
                 except Exception as e:
                     logger.error(f"swarm agent_chat failed for {name}: {e}", exc_info=True)
                     content = f"（{name} 暂时无法发言: {e}）"
@@ -329,7 +331,10 @@ async def run(
                                    "agent": name, "agent_id": member["agent_id"],
                                    "content": content, "type": "message", "round": round_idx + 1,
                                    "model": (reasoning.get("model_routing") or {}).get("selected_model"),
-                                   "latency": latency_ms}})
+                                   "latency": latency_ms,
+                                   "exec_mode": reasoning.get("exec_mode", result.get("exec_mode", "")),
+                                   "iterations": reasoning.get("iterations", result.get("iterations", 1)),
+                               }})
 
                 if reasoning:
                     await send_fn({"type": "reasoning_complete", "source": "swarm",
@@ -340,7 +345,18 @@ async def run(
                                        "model_routing": reasoning.get("model_routing", {}),
                                        "tool_calls": reasoning.get("tool_calls", []),
                                        "decision_summary": f"第 {round_idx + 1} 轮发言",
-                                       "latency": latency_ms}})
+                                       "latency": latency_ms,
+                                       "exec_mode": reasoning.get("exec_mode", result.get("exec_mode", "")),
+                                       "iterations": reasoning.get("iterations", result.get("iterations", 1)),
+                                       # 模式专属数据（前端按模式渲染）
+                                       "history": reasoning.get("history", []),
+                                       "reflections": reasoning.get("reflections", []),
+                                       "samples": reasoning.get("samples", []),
+                                       "merged": reasoning.get("merged", False),
+                                       "plan": reasoning.get("plan", {}),
+                                       "tool_results": reasoning.get("tool_results", []),
+                                       "review_score": reasoning.get("review_score"),
+                                   }})
 
                 await send_fn({"type": "agent_status", "source": member["agent_id"],
                                "timestamp": datetime.now().isoformat(),
@@ -432,10 +448,12 @@ async def run(
 
                 try:
                     t_start = _t.monotonic()
-                    exec_result = await agent_chat(
-                        db=db, agent=member["_agent"], message=exec_prompt,
-                        return_reasoning=True, save_memory=False,
-                        session_id=session_id, team_id=str(team.id))
+                    from app.services.collaboration.agent_executor import agent_executor as _exec2
+                    exec_result = await _exec2.execute(
+                        prompt=exec_prompt, agent=member["_agent"], db=db,
+                        session_id=session_id, team_id=str(team.id),
+                        node_key="swarm_execute",
+                    )
                     latency_ms = int((_t.monotonic() - t_start) * 1000)
                     exec_content = (exec_result.get("content") or "").strip()
                     exec_reasoning = exec_result.get("reasoning", {}) or {}

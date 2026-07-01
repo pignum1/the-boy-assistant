@@ -71,6 +71,8 @@ export interface ReasoningCompletePayload {
   supervisor_analysis?: string;
   dispatch_guidance?: string;
   latency?: number;
+  exec_mode?: string;
+  iterations?: number;
 }
 
 export interface HitlRequestPayload {
