@@ -57,7 +57,36 @@ export function DrawerToggleButtons({
         badge={taskCount && taskCount.total > 0 ? `${taskCount.done}/${taskCount.total}` : undefined}
         onClick={() => onToggle('workflow')}
       />
+      <LangfuseLinkBtn />
     </div>
+  );
+}
+
+function LangfuseLinkBtn() {
+  const url = (import.meta as any).env?.VITE_LANGFUSE_URL || 'http://localhost:3000';
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="LangFuse 可观测性 Dashboard"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '4px 10px', fontSize: 11,
+        background: 'transparent',
+        border: '1px solid var(--border-subtle)',
+        color: 'var(--text-secondary)',
+        borderRadius: 4, cursor: 'pointer',
+        fontFamily: 'var(--font-mono)', height: 28,
+        textDecoration: 'none',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--cyan-bg)'; e.currentTarget.style.color = 'var(--cyan-400)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+    >
+      <span style={{ fontSize: 12 }}>📊</span>
+      <span>监控</span>
+    </a>
   );
 }
 

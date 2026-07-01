@@ -15,6 +15,7 @@ from app.adapters.llm.base import LLMConfig
 from app.adapters.llm.litellm_adapter import LiteLLMAdapter
 from app.adapters.llm.mock_adapter import MockLLMAdapter
 from app.tools.tool_executor import tool_executor
+from app.services.trace_context import TraceContext, trace_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,29 @@ async def agent_chat(
         response = await adapter.chat(messages=messages, config=config)
         routing_info["fallback_used"] = False
 
+    # ── LangFuse: structured generation metadata ──
+    usage = response.usage or {}
+    gen_meta = trace_metadata.gen_meta(
+        provider=response.provider or "",
+        model=response.model or "",
+        agent=agent.name or "",
+        exec_mode="single_pass",
+        latency_s=response.latency or 0.0,
+    )
+    with TraceContext.generation(
+        name=f"chat:{response.model or 'unknown'}",
+        model=response.model or "",
+        input_data={"messages": [m.get("content", "")[:500] for m in messages[-3:]]},
+        output_data=response.content[:500] if response.content else "",
+        usage={
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        },
+        metadata=gen_meta,
+    ):
+        pass  # generation auto-ended on context exit
+
     # 检查工具调用
     content = response.content
     thinking_content = response.thinking  # 使用模型的原生思考内容
@@ -226,6 +250,31 @@ async def agent_chat(
                 response2 = await adapter.chat(messages=messages, config=config_no_tools)
 
             content = response2.content or f"✅ 工具执行完成：{tool_name}"
+
+            # ── LangFuse: structured tool follow-up generation ──
+            usage2 = response2.usage or {}
+            tfu_meta = trace_metadata.gen_meta(
+                provider=response2.provider or "",
+                model=response2.model or config.model or "",
+                agent=agent.name or "",
+                exec_mode="tool_followup",
+                latency_s=response2.latency or 0.0,
+            )
+            tfu_meta["tool_name"] = tool_name
+            with TraceContext.generation(
+                name=f"tool:{tool_name}",
+                model=response2.model or config.model or "",
+                input_data={"messages": [m.get("content", "")[:300] for m in messages[-2:]]},
+                output_data=content[:500],
+                usage={
+                    "prompt_tokens": usage2.get("prompt_tokens", 0),
+                    "completion_tokens": usage2.get("completion_tokens", 0),
+                    "total_tokens": usage2.get("total_tokens", 0),
+                },
+                metadata=tfu_meta,
+            ):
+                pass
+
             # 清理可能残留的 TOOL_CALL 文本
             import re as _re_clean
             content = _re_clean.sub(

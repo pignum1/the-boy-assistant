@@ -334,7 +334,11 @@ def supervisor_decision_to_state(decision: dict[str, Any]) -> dict[str, Any]:
         updates["hitl_options"] = [
             {"label": "我来回答", "value": "answer"},
         ]
-        updates["clarity_score"] = decision.get("clarity_score", 0.3)
+        clarity_val = decision.get("clarity_score", 0.3)
+        updates["clarity_score"] = clarity_val
+        # ── 评分：需求清晰度 ──
+        from app.services.trace_context import TraceContext
+        TraceContext.score("clarity_score", clarity_val, comment="需求分析: 信息不足需澄清")
 
     elif action == "need_confirm":
         updates["problem_type"] = decision.get("problem_type", "")
@@ -342,8 +346,12 @@ def supervisor_decision_to_state(decision: dict[str, Any]) -> dict[str, Any]:
         updates["analysis_summary"] = decision.get("summary", "")
         updates["required_roles"] = decision.get("required_roles", [])
         updates["phases_plan"] = decision.get("phases", [])
-        updates["clarity_score"] = decision.get("clarity_score", 0.8)
+        clarity_val = decision.get("clarity_score", 0.8)
+        updates["clarity_score"] = clarity_val
         updates["hitl_type"] = "confirmation"
+        # ── 评分：需求清晰度 ──
+        from app.services.trace_context import TraceContext
+        TraceContext.score("clarity_score", clarity_val, comment="需求分析完成，等待用户确认")
 
         # ── 组装可读的分析确认内容 ──
         # prompt 不产出 summary（用 analysis_report 代替），这里做兜底

@@ -18,6 +18,7 @@ from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession as DBAsyncSession
 
 from app.services.mailbox_service import mailbox_service, MailboxMessageType
+from app.services.trace_context import TraceContext
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,31 @@ class DiscussionEngine:
         4. (可选) Supervisor 审核
         5. 保存记忆 + 更新计数
         """
+        # 创建 root trace，覆盖整个 session 生命周期
+        session_id_str = str(session_id)
+        with TraceContext.create_trace(
+            name="discussion",
+            session_id=session_id_str,
+            metadata={"team_id": str(team_id)},
+        ):
+            async for event in self._process_message_events(
+                session_id=session_id,
+                user_message=user_message,
+                team_id=team_id,
+                history=history,
+                mentioned_agents=mentioned_agents,
+            ):
+                yield event
+
+    async def _process_message_events(
+        self,
+        session_id: uuid.UUID,
+        user_message: str,
+        team_id: uuid.UUID,
+        history: Optional[list[dict]] = None,
+        mentioned_agents: Optional[list[str]] = None,
+    ) -> AsyncGenerator[DiscussionEvent, None]:
+        """Inner generator — trace context already set up by process_message."""
         from app.models.team import Team
         from app.models.agent import Agent
         from app.services.agent_factory import agent_chat
@@ -85,7 +111,7 @@ class DiscussionEngine:
 
         team_mode = team.collaboration_mode or "supervisor"
 
-        # 2. 选择执行策略
+        # 2. 选择执行策略（每个模式用 span 包裹，自动挂到 root trace）
         if team_mode == "swarm":
             async for event in self._execute_swarm_mode(
                 session_id=session_id,
@@ -440,11 +466,11 @@ class DiscussionEngine:
                     team_id=str(team.id), agent_id=wid, task_id=str(session_id),
                 )
                 try:
-                    result = await agent_chat(
-                        db=self.db, agent=worker, message=prompt,
-                        team_id=str(team.id), session_id=str(session_id),
-                        return_reasoning=True,
-                        save_memory=False,  # 讨论引擎统一管理记忆存储
+                    from app.services.collaboration.agent_executor import agent_executor as _exec2
+                    result = await _exec2.execute(
+                        prompt=prompt, agent=worker, db=self.db,
+                        session_id=str(session_id), team_id=str(team.id),
+                        node_key="supervisor_worker",
                     )
                     full_content = result.get("content", "")
                     reasoning = result.get("reasoning", {})
@@ -625,10 +651,11 @@ class DiscussionEngine:
                     team_id=str(team.id), agent_id=wid, task_id=str(session_id),
                 )
                 t0 = time.time()
-                result = await agent_chat(
-                    db=self.db, agent=worker, message=prompt,
-                    team_id=str(team.id), session_id=str(session_id),
-                    return_reasoning=True, save_memory=False,
+                from app.services.collaboration.agent_executor import agent_executor as _exec
+                result = await _exec.execute(
+                    prompt=prompt, agent=worker, db=self.db,
+                    session_id=str(session_id), team_id=str(team.id),
+                    node_key="swarm_agent",
                 )
                 elapsed = time.time() - t0
                 try:
@@ -641,7 +668,8 @@ class DiscussionEngine:
                     "reasoning": result.get("reasoning", {}),
                     "latency": round(elapsed, 2),
                     "agent_id": wid,
-                    "questions": result.get("questions", []),
+                    "exec_mode": result.get("exec_mode", "single_pass"),
+                    "iterations": result.get("iterations", 1),
                 }
             finally:
                 await agent_pool.release(wid)
@@ -813,10 +841,11 @@ class DiscussionEngine:
                     team_id=str(team.id), agent_id=wid, task_id=str(session_id),
                 )
                 t0 = time.time()
-                result = await agent_chat(
-                    db=self.db, agent=worker, message=prompt,
-                    team_id=str(team.id), session_id=str(session_id),
-                    return_reasoning=True, save_memory=False,
+                from app.services.collaboration.agent_executor import agent_executor as _exec3
+                result = await _exec3.execute(
+                    prompt=prompt, agent=worker, db=self.db,
+                    session_id=str(session_id), team_id=str(team.id),
+                    node_key="round_robin",
                 )
                 elapsed = time.time() - t0
                 try:
@@ -927,13 +956,11 @@ class DiscussionEngine:
             )
 
             t0 = time.time()
-            result = await agent_chat(
-                db=self.db,
-                agent=worker,
-                message=prompted_message,
-                team_id=str(team.id),
-                session_id=str(session_id),
-                return_reasoning=True, save_memory=False,
+            from app.services.collaboration.agent_executor import agent_executor as _exec4
+            result = await _exec4.execute(
+                prompt=prompted_message, agent=worker, db=self.db,
+                session_id=str(session_id), team_id=str(team.id),
+                node_key="direct_agent",
             )
             elapsed = time.time() - t0
 
@@ -1182,7 +1209,7 @@ class DiscussionEngine:
         })
 
     def _reasoning(self, source: str, agent_name: str, reasoning: dict):
-        """Agent 推理完成：路由决策 + 工具调用 + 上下文 + 思考步骤"""
+        """Agent 推理完成：路由决策 + 工具调用 + 上下文 + 思考步骤 + 执行模式"""
         return self._event(DiscussionEventType.REASONING, source=source, payload={
             "agent": agent_name,
             "model_routing": reasoning.get("model_routing", {}),
@@ -1195,6 +1222,8 @@ class DiscussionEngine:
             "supervisor_analysis": reasoning.get("supervisor_analysis"),
             "dispatch_guidance": reasoning.get("dispatch_guidance"),
             "latency": reasoning.get("latency"),
+            "exec_mode": reasoning.get("exec_mode", ""),
+            "iterations": reasoning.get("iterations", 1),
         })
 
     def _agent_message(self, source: str, agent_name: str, content: str, model: str, latency: float, questions: list = None):

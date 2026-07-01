@@ -214,6 +214,10 @@ async def m7_verify_node(state: CollabState) -> dict[str, Any]:
             decision = route_after_verify(verification)
 
             if decision == "pass":
+                # ── 评分：验证通过 ──
+                from app.services.trace_context import TraceContext
+                TraceContext.score("review_score", 1.0, comment="产物与需求匹配，验证通过")
+
                 return {
                     "verification": verification,
                     "status": "completed",
@@ -256,6 +260,14 @@ async def m7_verify_node(state: CollabState) -> dict[str, Any]:
                     "_agent_name": "验证员",
                 }
             elif decision == "retry":
+                # ── 评分：验证未通过，需重做 ──
+                from app.services.trace_context import TraceContext
+                TraceContext.score(
+                    "review_score",
+                    0.3,
+                    comment=f"severity={verification.get('severity', 'major')}, retry={retry_count + 1}",
+                )
+
                 return {
                     "verification": verification,
                     "status": "executing",

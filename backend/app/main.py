@@ -87,6 +87,10 @@ async def lifespan(app: FastAPI):
     await blackboard.connect()
     logger.info("Blackboard connected")
 
+    # 初始化告警 Webhook（Slack / Discord / Custom）
+    from app.services.alert_webhook import init_alerts_from_config
+    init_alerts_from_config()
+
     # 启动 WS Broadcaster（Blackboard → WebSocket 桥接）
     from app.services.ws_broadcaster import create_broadcaster
     global broadcaster_instance

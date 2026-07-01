@@ -439,9 +439,11 @@ async def _handle_collab_chat(
 
         # 通过 router 分流到对应引擎（swarm / supervisor / langgraph）
         try:
-            # 创建 Harness 横切拦截器
-            from app.services.harness import create_default_harness
-            harness = create_default_harness(db, save_and_send)
+            # 创建 Loop Engine + Harness 横切拦截器
+            from app.services.loop_engine import LoopEngine
+            from app.services.harness import Harness, HarnessConfig
+            loop_engine = LoopEngine()
+            harness = Harness(db, save_and_send, config=HarnessConfig(), loop_engine=loop_engine)
 
             await router_dispatch(
                 session_id=session_id,
@@ -629,11 +631,18 @@ async def _handle_hitl_resume(
                         "latency": p.get("latency", 0),
                     }
 
+        # 创建 Harness + Loop Engine for resume
+        from app.services.loop_engine import LoopEngine as _LoopEngine2
+        from app.services.harness import Harness as _Harness2, HarnessConfig as _HC2
+        _loop_engine2 = _LoopEngine2()
+        _harness2 = _Harness2(db, save_and_send, config=_HC2(), loop_engine=_loop_engine2)
+
         await router_resume(
             session_id=session_id,
             team=team,
             user_response=user_response,
             send_fn=save_and_send,
+            harness=_harness2,
         )
 
         # 更新消息计数（消息已在 save_and_send 中实时保存）

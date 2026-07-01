@@ -36,6 +36,19 @@ class Settings(BaseSettings):
     # Auth — 不设置则跳过认证（开发模式）
     API_KEY: str = ""
 
+    # ── LangFuse 可观测性（开源 LLM 追踪平台）──
+    # 自部署: LANGFUSE_HOST=http://localhost:3000
+    # Cloud:  LANGFUSE_HOST=https://cloud.langfuse.com
+    LANGFUSE_HOST: str = ""
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+
+    # ── 告警 Webhook（可选）──
+    ALERT_WEBHOOK_SLACK: str = ""
+    ALERT_WEBHOOK_DISCORD: str = ""
+    ALERT_WEBHOOK_CUSTOM: str = ""
+    ALERT_LEVEL: str = "warning"
+
     # 速率限制（每分钟请求数，默认 120）
     RATE_LIMIT_RPM: int = 120
 

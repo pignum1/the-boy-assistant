@@ -21,6 +21,15 @@ const TRACE_ICONS: Record<string, string> = {
   agent_status: '🟡', message_complete: '✅', storage: '💾', dispatch: '📨',
 };
 
+const MODE_LABEL: Record<string, string> = {
+  single_pass: '⚡单次', chain_of_thought: '🔗思维链', plan_execute: '📋规划-执行',
+  rewoo: '📦ReWOO', react: '🔄ReAct', reflexion: '🪞Reflexion', self_consistency: '🗳️自一致性',
+};
+const MODE_COLORS: Record<string, string> = {
+  single_pass: '#64748b', chain_of_thought: '#8b5cf6', plan_execute: '#3b82f6',
+  rewoo: '#10b981', react: '#f59e0b', reflexion: '#ec4899', self_consistency: '#06b6d4',
+};
+
 interface ContextData {
   session?: { id: string; title: string; mode: string; status: string };
   stats?: {
@@ -225,6 +234,9 @@ function AllModal({ entries, contextData, onClose }: { entries: TraceEntry[]; co
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: entry.color }}>{entry.icon} {entry.agent}</span>
                   <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 3, background: `${entry.color}22`, color: entry.color }}>{TYPES[entry.type] || entry.type}</span>
+                  {d.exec_mode && MODE_LABEL[d.exec_mode as string] && (
+                    <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: `${MODE_COLORS[d.exec_mode as string] || '#64748b'}22`, color: MODE_COLORS[d.exec_mode as string] || '#64748b' }}>{MODE_LABEL[d.exec_mode as string]}</span>
+                  )}
                   <span style={{ fontSize: 9, color: 'var(--text-dim)', marginLeft: 'auto' }}>{tFull(entry.timestamp)}</span>
                 </div>
                 <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', marginBottom: 4 }}>
