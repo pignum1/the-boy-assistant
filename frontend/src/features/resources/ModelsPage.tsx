@@ -293,7 +293,7 @@ function ProviderCard({ summary, onClick }: {
         </span>
       </div>
       <div style={cardNameStyle}>{config.label}</div>
-      <div style={cardDescStyle}>{models.length} 个模型{models.length > 0 ? ` · ${models.map((m) => m.name).join(', ')}` : ''}</div>
+      <div style={cardDescStyle}>{models.length} 个模型{models.length > 0 ? ` · ${models.map((m) => m.name || (m as any).model_name || (m as any).display_name || '').join(', ')}` : ''}</div>
       <div style={{ ...cardDescStyle, marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: apiKeyConfigured ? 'var(--green-400)' : 'var(--text-dim)', display: 'inline-block' }} />
         {apiKeyConfigured ? 'API Key 已配置' : '需要配置 API Key'}
@@ -329,10 +329,9 @@ function ProviderPanel({ providerKey, models, onSelectProvider, onClose, onRefre
     if (providerKey) {
       setBaseUrl(PROVIDER_DEFAULT_BASE_URL[providerKey] || '');
       setApiKey('');
-      // Fetch real API key for display
-      api.get<{api_key: string}>(`/api/v1/models/provider/${providerKey}/key`)
-        .then((data) => setApiKey(data.api_key))
-        .catch(() => {}); // No key configured — stay empty
+      // 已配置 Key 的掩码展示由 existingMaskedKey 提供（来自模型列表 api_key_masked），
+      // 无需再请求 /provider/{provider}/key：该端点未配 Key 时返回 404 会刷红控制台，
+      // 且返回字段为 api_key_masked 而非 api_key（旧代码读取无效）。
     } else {
       setApiKey('');
       setBaseUrl('');

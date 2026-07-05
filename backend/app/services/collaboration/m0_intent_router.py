@@ -263,7 +263,7 @@ async def _analyze_task_by_llm(
 
             llm_result = await agent_chat(
                 db=db, agent=agent, message=prompt,
-                save_memory=False, return_reasoning=False,
+                save_memory=False, return_reasoning=True,
             )
             content = llm_result.get("content", "").strip()
 
@@ -911,6 +911,9 @@ async def _execute_single_agent(
                 display_content = f"{display_content}\n\n---\n{file_summary}"
                 files_changed = [{"name": f["name"], "status": "created"} for f in files_written]
 
+            if reasoning:
+                reasoning["exec_mode"] = "single_pass"
+                reasoning["iterations"] = 1
             return {
                 "status": "completed",
                 "routing_decision": ROUTING_SINGLE,

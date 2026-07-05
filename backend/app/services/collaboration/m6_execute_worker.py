@@ -511,6 +511,12 @@ async def _execute_single_worker_isolated(
                 return_reasoning=True, save_memory=False,
                 session_id=session_id, team_id=team_id,
             )
+            # agent_chat 不注入 exec_mode → 手动补上（依赖 agent_executor._execute_single 的逻辑）
+            if llm_result.get("reasoning"):
+                llm_result["reasoning"]["exec_mode"] = llm_result.get("exec_mode") or "single_pass"
+                llm_result["reasoning"]["iterations"] = 1
+            else:
+                llm_result["reasoning"] = {"exec_mode": "single_pass", "iterations": 1}
             latency_s = time.monotonic() - t_start
 
             output = llm_result.get("content", "")
@@ -641,6 +647,34 @@ async def _push_worker_message(
 
         _persist_worker_result(session_id, task, content, reasoning, agent_name, latency_s)
 
+        # 1. 先发 reasoning_complete → ws.py 缓存到 reasoning_by_agent
+        if reasoning:
+            await manager.broadcast_to_session(session_id, {
+                "type": "reasoning_complete",
+                "source": "m6_execute_worker",
+                "timestamp": ts,
+                "payload": {
+                    "agent": agent_name,
+                    "thinking_steps": reasoning.get("thinking_steps", ""),
+                    "model_routing": reasoning.get("model_routing", {}),
+                    "tool_calls": reasoning.get("tool_calls", []),
+                    "decision_summary": f"完成任务: {task.get('title', task.get('id', ''))}",
+                    "latency": int(latency_s * 1000) if latency_s else 0,
+                    # 模式专属推理数据（ReAct/Reflexion/Self-Consistency/Plan&Execute 等）
+                    "exec_mode": reasoning.get("exec_mode", ""),
+                    "iterations": reasoning.get("iterations", 0),
+                    "history": reasoning.get("history", []),
+                    "reflections": reasoning.get("reflections", []),
+                    "samples": reasoning.get("samples", []),
+                    "merged": reasoning.get("merged", False),
+                    "plan": reasoning.get("plan", {}),
+                    "tool_results": reasoning.get("tool_results", []),
+                    "review_score": reasoning.get("review_score"),
+                    "supervisor_analysis": reasoning.get("supervisor_analysis", ""),
+                },
+            })
+
+        # 2. 再发 agent_message → ws.py 保存时合并已就绪的 reasoning
         await manager.broadcast_to_session(session_id, {
             "type": "agent_message",
             "source": "m6_execute_worker",
@@ -654,21 +688,6 @@ async def _push_worker_message(
                 "task_id": task.get("id", ""),
             },
         })
-
-        if reasoning:
-            await manager.broadcast_to_session(session_id, {
-                "type": "reasoning_complete",
-                "source": "m6_execute_worker",
-                "timestamp": ts,
-                "payload": {
-                    "agent": agent_name,
-                    "thinking_steps": reasoning.get("thinking_steps", ""),
-                    "model_routing": reasoning.get("model_routing", {}),
-                    "tool_calls": reasoning.get("tool_calls", []),
-                    "decision_summary": f"完成任务: {task.get('title', task.get('id', ''))}",
-                    "latency": int(latency_s * 1000) if latency_s else 0,
-                },
-            })
 
         if files:
             await manager.broadcast_to_session(session_id, {
@@ -720,6 +739,21 @@ def _persist_worker_result(
                                 "task_id": tid,
                                 "task_title": title,
                                 "latency": int(latency_s * 1000) if latency_s else 0,
+                                # 推理数据 — 前端 ReasoningBlock + 历史加载依赖这些字段
+                                "exec_mode": reasoning.get("exec_mode", ""),
+                                "iterations": reasoning.get("iterations", 0),
+                                "thinking_steps": reasoning.get("thinking_steps", ""),
+                                "decision_summary": f"完成任务: {title}",
+                                "model_routing": reasoning.get("model_routing", {}),
+                                "tool_calls": reasoning.get("tool_calls", []),
+                                "history": reasoning.get("history", []),
+                                "reflections": reasoning.get("reflections", []),
+                                "samples": reasoning.get("samples", []),
+                                "merged": reasoning.get("merged", False),
+                                "plan": reasoning.get("plan", {}),
+                                "tool_results": reasoning.get("tool_results", []),
+                                "review_score": reasoning.get("review_score"),
+                                "supervisor_analysis": reasoning.get("supervisor_analysis", ""),
                             }
                             meta = {k: v for k, v in meta.items() if v not in (None, "", [])}
                             await MemoryManager(db).save_memory(

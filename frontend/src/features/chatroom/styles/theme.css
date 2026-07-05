@@ -1,0 +1,76 @@
+/**
+ * 聊天室主题 — 来自 chatroom-style-demo.html 的设计标记
+ *
+ * 与 demo 完全一致的 CSS 变量，用于所有 chatroom 组件。
+ * 引入后，组件 inline style 中引用 var(--bg)、var(--text) 等即可。
+ */
+
+:root {
+  /* 背景 */
+  --bg: #ffffff;
+  --bg-soft: #f7f7f8;
+  --bg-bubble: #f0f0f0;
+  --bg-hover: #f5f5f5;
+  --bg-code: #f3f4f6;
+
+  /* 边框 */
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+
+  /* 文字 */
+  --text: #18181b;
+  --text-soft: #6b7280;
+  --text-mute: #9ca3af;
+
+  /* 品牌色 */
+  --primary: #1677ff;
+  --green: #22c55e;
+  --red: #ef4444;
+  --shadow: 0 8px 30px rgba(0,0,0,.08);
+
+  /* Agent 色 */
+  --agent-blue:  #3b82f6;
+  --agent-green: #10b981;
+  --agent-purple:#8b5cf6;
+  --agent-amber: #f59e0b;
+
+  /* 推理 */
+  --thinking: #9ca3af;
+}
+
+/* 暗色主题 */
+[data-theme="dark"] {
+  --bg: #0a0a0a;
+  --bg-soft: #111113;
+  --bg-bubble: #1f1f23;
+  --bg-hover: #18181b;
+  --bg-code: #1f1f23;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --text: #fafafa;
+  --text-soft: #a1a1aa;
+  --text-mute: #71717a;
+  --primary: #3b82f6;
+  --green: #22c55e;
+  --red: #f87171;
+  --shadow: 0 8px 30px rgba(0,0,0,.5);
+  --thinking: #71717a;
+}
+
+/* 滚动条 */
+.chatroom-scrollbar::-webkit-scrollbar { width: 8px; }
+.chatroom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: 4px;
+}
+
+/* 消息入场动画 */
+@keyframes chatroom-fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 脉冲 */
+@keyframes chatroom-breath {
+  0%,100% { opacity: 1; }
+  50%     { opacity: .3; }
+}

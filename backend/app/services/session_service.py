@@ -9,6 +9,7 @@
 
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -23,6 +24,22 @@ from app.models.team import Team
 from app.models.memory import Memory
 
 logger = logging.getLogger(__name__)
+
+# ws.py 保存用户消息时会附加一个纳秒时间戳标记 f"[{time.time_ns()}]" 作为持久化
+# 去重 key（使每轮用户消息内容唯一，避免 get_session_messages 的按内容去重把
+# 重复/配对消息合并）。该标记只用于去重，绝不能展示给用户——读取时统一剥离。
+# 18 位以上数字几乎不可能是用户输入（纳秒时间戳为 18~19 位），故阈值取 18。
+_DIALOG_TAG_RE = re.compile(r"\[\d{18,}\]$")
+
+
+def _strip_dialog_tag(content: str | None) -> str:
+    """剥离用户消息末尾的去重时间戳标记，例如 'hi[1782892302613548000]' -> 'hi'。
+
+    仅影响展示；调用方仍以原始 content 作为去重 key。
+    """
+    if not content:
+        return content or ""
+    return _DIALOG_TAG_RE.sub("", content)
 
 
 class SessionService:
@@ -259,8 +276,8 @@ class SessionService:
                     )
                     if not is_internal and user_content not in seen_user_contents:
                         seen_user_contents.add(user_content)
-                        # Strip timestamp for display
-                        display_content = _re.sub(r"\s+\[\d+\]$", "", user_content)
+                        # 剥离去重时间戳标记后再展示（去重仍用原始 user_content）
+                        display_content = _strip_dialog_tag(user_content)
                         messages.append({
                             "id": f"{m.id}_user",
                             "role": "user",
@@ -289,10 +306,12 @@ class SessionService:
                         continue  # 跳过重复的简单格式用户消息
                     seen_user_contents.add(content)
                 meta = m.metadata_ or {}
+                # 去重以原始 content（含标记）为准；展示时剥离标记
+                display_content = _strip_dialog_tag(content)
                 messages.append({
                     "id": str(m.id),
                     "role": role,
-                    "content": content,
+                    "content": display_content,
                     "agent_name": "我" if role == "user" else None,
                     "timestamp": m.created_at.isoformat() if m.created_at else "",
                     "metadata": meta if isinstance(meta, dict) else {},
@@ -401,8 +420,8 @@ class SessionService:
                 user_match = _re.match(r"用户(?:\[\d+\])?: ", user_part)
                 if user_match:
                     user_content = user_part[user_match.end():]
-                    # Strip nanosecond timestamp suffix for display
-                    display_content = _re.sub(r"\s+\[\d+\]$", "", user_content)
+                    # 剥离去重时间戳标记后再展示
+                    display_content = _strip_dialog_tag(user_content)
                     messages.append({
                         "id": f"{m.id}_user",
                         "role": "user",
@@ -424,7 +443,7 @@ class SessionService:
                 messages.append({
                     "id": str(m.id),
                     "role": "system" if m.type == "system" else "assistant",
-                    "content": content,
+                    "content": _strip_dialog_tag(content),
                     "agent_name": meta.get("agent") if isinstance(meta, dict) else None,
                     "timestamp": m.created_at.isoformat() if m.created_at else "",
                     "metadata": meta if isinstance(meta, dict) else {},

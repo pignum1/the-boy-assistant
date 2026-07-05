@@ -147,7 +147,14 @@ export function hasExpandableContent(item: AgentMessageItem): boolean {
     (Array.isArray(r.toolCalls) && r.toolCalls.length > 0) ||
     r.execMode ||
     r.exec_mode ||
-    r.iterations
+    r.iterations ||
+    // 模式专属数据：ReAct 迭代链 / Reflexion 反思 / Self-Consistency 采样 / ReWOO 计划等
+    (Array.isArray(r.history) && r.history.length > 0) ||
+    (Array.isArray(r.reflections) && r.reflections.length > 0) ||
+    (Array.isArray(r.samples) && r.samples.length > 0) ||
+    r.plan ||
+    (Array.isArray(r.tool_results) && r.tool_results.length > 0) ||
+    r.review_score != null
   );
 }
 

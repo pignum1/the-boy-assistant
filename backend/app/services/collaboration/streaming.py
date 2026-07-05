@@ -210,7 +210,7 @@ async def stream_to_websocket(
                         },
                     })
 
-                # Reasoning complete
+                # Reasoning complete（先发 → ws.py 缓存，agent_message 保存时自动合并）
                 if reasoning_data:
                     await websocket_send_fn({
                         "type": "reasoning_complete",
@@ -225,6 +225,14 @@ async def stream_to_websocket(
                             "latency": latency,
                             "exec_mode": reasoning_data.get("exec_mode", ""),
                             "iterations": reasoning_data.get("iterations", 1),
+                            "history": reasoning_data.get("history", []),
+                            "reflections": reasoning_data.get("reflections", []),
+                            "samples": reasoning_data.get("samples", []),
+                            "merged": reasoning_data.get("merged", False),
+                            "plan": reasoning_data.get("plan", {}),
+                            "tool_results": reasoning_data.get("tool_results", []),
+                            "review_score": reasoning_data.get("review_score"),
+                            "supervisor_analysis": reasoning_data.get("supervisor_analysis", ""),
                         },
                     })
 

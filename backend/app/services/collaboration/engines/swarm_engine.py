@@ -325,17 +325,8 @@ async def run(
                                                "status": "idle", "summary": f"{name} 本轮未发言"}})
                     return None
 
-                await send_fn({"type": "agent_message", "source": "swarm",
-                               "timestamp": datetime.now().isoformat(),
-                               "payload": {
-                                   "agent": name, "agent_id": member["agent_id"],
-                                   "content": content, "type": "message", "round": round_idx + 1,
-                                   "model": (reasoning.get("model_routing") or {}).get("selected_model"),
-                                   "latency": latency_ms,
-                                   "exec_mode": reasoning.get("exec_mode", result.get("exec_mode", "")),
-                                   "iterations": reasoning.get("iterations", result.get("iterations", 1)),
-                               }})
-
+                # 先发 reasoning_complete：ws.py 持久化 agent_message 时会合并此时已就绪的
+                # reasoning_by_agent；若放在 agent_message 之后，刷新页面后该消息会丢失思维链。
                 if reasoning:
                     await send_fn({"type": "reasoning_complete", "source": "swarm",
                                    "timestamp": datetime.now().isoformat(),
@@ -357,6 +348,17 @@ async def run(
                                        "tool_results": reasoning.get("tool_results", []),
                                        "review_score": reasoning.get("review_score"),
                                    }})
+
+                await send_fn({"type": "agent_message", "source": "swarm",
+                               "timestamp": datetime.now().isoformat(),
+                               "payload": {
+                                   "agent": name, "agent_id": member["agent_id"],
+                                   "content": content, "type": "message", "round": round_idx + 1,
+                                   "model": (reasoning.get("model_routing") or {}).get("selected_model"),
+                                   "latency": latency_ms,
+                                   "exec_mode": reasoning.get("exec_mode", result.get("exec_mode", "")),
+                                   "iterations": reasoning.get("iterations", result.get("iterations", 1)),
+                               }})
 
                 await send_fn({"type": "agent_status", "source": member["agent_id"],
                                "timestamp": datetime.now().isoformat(),
@@ -473,6 +475,32 @@ async def run(
                     return 0
 
                 exec_content = _clean_deliverable_content(exec_content)
+
+                # 先发 reasoning_complete：执行轮此前缺失，导致持久化时错挂上一轮残留的
+                # reasoning_by_agent（或丢失）。补上后该条 agent_message 带自己的思维链。
+                if exec_reasoning:
+                    await send_fn({"type": "reasoning_complete", "source": "swarm",
+                                   "timestamp": datetime.now().isoformat(),
+                                   "payload": {
+                                       "agent": agent_name,
+                                       "thinking_steps": exec_reasoning.get("thinking_steps", ""),
+                                       "model_routing": exec_reasoning.get("model_routing", {}),
+                                       "tool_calls": exec_reasoning.get("tool_calls", []),
+                                       "decision_summary": "执行任务产出",
+                                       "latency": latency_ms,
+                                       "exec_mode": exec_reasoning.get("exec_mode", ""),
+                                       "iterations": exec_reasoning.get("iterations", 1),
+                                       # 模式专属数据（与讨论轮保持一致，否则 react/self_consistency/
+                                       # rewoo/reflexion 的执行轮思维链会只剩「执行任务产出」占位）
+                                       "supervisor_analysis": exec_reasoning.get("supervisor_analysis", ""),
+                                       "history": exec_reasoning.get("history", []),
+                                       "reflections": exec_reasoning.get("reflections", []),
+                                       "samples": exec_reasoning.get("samples", []),
+                                       "merged": exec_reasoning.get("merged", False),
+                                       "plan": exec_reasoning.get("plan", {}),
+                                       "tool_results": exec_reasoning.get("tool_results", []),
+                                       "review_score": exec_reasoning.get("review_score"),
+                                   }})
 
                 await send_fn({"type": "agent_message", "source": "swarm",
                                "timestamp": datetime.now().isoformat(),

@@ -157,8 +157,9 @@ export function AgentsPage() {
       }
       if (modelsRes.status === 'fulfilled') {
         const data = modelsRes.value as any;
+        // 模型 API 返回 model_name + display_name，无 name 字段；用 display_name 作可读名
         setModels((data.items || data).map((m: any) => ({
-          id: m.id, name: m.name, provider: m.provider,
+          id: m.id, name: m.display_name || m.model_name, provider: m.provider,
         })));
       }
       if (toolsRes.status === 'fulfilled') {

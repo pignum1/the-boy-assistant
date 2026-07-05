@@ -408,6 +408,18 @@ async def _handle_collab_chat(
                         "model_routing": payload.get("model_routing", {}),
                         "decision_summary": payload.get("decision_summary", ""),
                         "latency": payload.get("latency", 0),
+                        # 模式专属推理数据 —— 必须一并持久化，否则刷新后 ReAct/Self-Consistency/
+                        # ReWOO/Reflexion 等模式的思维链内容会丢失（只剩 decision_summary 占位）。
+                        "supervisor_analysis": payload.get("supervisor_analysis", ""),
+                        "exec_mode": payload.get("exec_mode", ""),
+                        "iterations": payload.get("iterations", 0),
+                        "history": payload.get("history", []),
+                        "reflections": payload.get("reflections", []),
+                        "samples": payload.get("samples", []),
+                        "merged": payload.get("merged", False),
+                        "plan": payload.get("plan", {}),
+                        "tool_results": payload.get("tool_results", []),
+                        "review_score": payload.get("review_score"),
                     }
 
             elif data_type == "hitl_notification" or data_type == "hitl_request":
@@ -629,6 +641,17 @@ async def _handle_hitl_resume(
                         "model_routing": p.get("model_routing", {}),
                         "decision_summary": p.get("decision_summary", ""),
                         "latency": p.get("latency", 0),
+                        # 模式专属推理数据（与主对话路径保持一致）
+                        "supervisor_analysis": p.get("supervisor_analysis", ""),
+                        "exec_mode": p.get("exec_mode", ""),
+                        "iterations": p.get("iterations", 0),
+                        "history": p.get("history", []),
+                        "reflections": p.get("reflections", []),
+                        "samples": p.get("samples", []),
+                        "merged": p.get("merged", False),
+                        "plan": p.get("plan", {}),
+                        "tool_results": p.get("tool_results", []),
+                        "review_score": p.get("review_score"),
                     }
 
         # 创建 Harness + Loop Engine for resume

@@ -20,7 +20,6 @@ import type {
 } from '../../types/state';
 import { MetaPhaseRow } from './MetaPhaseRow';
 import { WorkPlanRow } from './WorkPlanRow';
-import { DrawerToggleButtons } from './DrawerToggleButtons';
 import { ExecutionControlBar } from '../input/ExecutionControlBar';
 
 interface Props {
@@ -31,14 +30,9 @@ interface Props {
   phases: MetaPhaseState[];
   currentPhaseId: MetaPhaseId | null;
   workPlan: WorkPlan | null;
-  artifactsCount: number;
-  teamCount: number;
-  openDrawers: import('../../types/state').DrawerState[];
-  workspacePath?: string;
   /** PR-D：当前团队协作模式，用于切换视图 */
   collabMode?: 'swarm' | 'supervisor' | 'langgraph';
   onJumpToPhase: (phaseId: MetaPhaseId) => void;
-  onToggleDrawer: (drawer: DrawerKind) => void;
   onHardInterrupt: () => void;
 }
 
@@ -51,10 +45,8 @@ const MODE_BADGE: Record<string, { icon: string; label: string; color: string; b
 export function PhaseProgressBar({
   sessionId, wsConnected, executionState, routing,
   phases, currentPhaseId, workPlan,
-  artifactsCount, teamCount, openDrawers,
-  workspacePath,
   collabMode = 'supervisor',
-  onJumpToPhase, onToggleDrawer, onHardInterrupt,
+  onJumpToPhase, onHardInterrupt,
 }: Props) {
   // supervisor 才显示 M-stage 行；暂时隐藏，聚焦任务分解
   const showMetaRow = false; // routing === 'multi_agent' && collabMode === 'supervisor';
@@ -63,8 +55,8 @@ export function PhaseProgressBar({
   return (
     <div style={{
       padding: '8px 14px',
-      borderBottom: '1px solid var(--border-subtle)',
-      background: 'var(--bg-card)',
+      borderBottom: '1px solid var(--border)',
+      background: 'var(--bg)',
     }}>
       {/* 顶行：session status + drawer buttons */}
       <div style={{
@@ -91,14 +83,6 @@ export function PhaseProgressBar({
         <ExecutionControlBar
           executionState={executionState}
           onHardInterrupt={onHardInterrupt}
-        />
-        <DrawerToggleButtons
-          openDrawers={openDrawers}
-          onToggle={onToggleDrawer}
-          taskCount={workPlan ? { done: workPlan.doneTasks, total: workPlan.totalTasks } : undefined}
-          artifactCount={artifactsCount}
-          teamCount={teamCount}
-          workspacePath={workspacePath}
         />
       </div>
 

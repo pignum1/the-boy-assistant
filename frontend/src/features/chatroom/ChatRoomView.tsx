@@ -5,28 +5,24 @@
  *   ├─ Main (Chat + ThinkingIndicator + Banner + Input)  ─ │ Drawer (可选) │
  *   └─────────────────────────────────────────────────────┴──────────────┘
  */
-import { useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useChatRoomState } from './hooks/useChatRoomState';
 import { useWsEvents } from './hooks/useWsEvents';
 import { useTeamMembers } from './hooks/useTeamMembers';
 import { useTeamMode } from './hooks/useTeamMode';
 import { useSessionHistory } from './hooks/useSessionHistory';
 import { PhaseProgressBar } from './components/header/PhaseProgressBar';
+import { MetricsBar } from './components/header/MetricsBar';
 import { ChatStream } from './components/chat/ChatStream';
 import { ThinkingIndicator } from './components/chat/ThinkingIndicator';
 import { ChatInput, type ChatInputHandle } from './components/input/ChatInput';
 import { InputModeBanner } from './components/input/InputModeBanner';
-import { DrawerHost } from './components/drawers/DrawerHost';
-
-// 抽屉组件延迟加载（用户点击时才加载，减少首屏体积）
-const WorkPlanDrawer = lazy(() => import('./components/drawers/WorkPlanDrawer').then(m => ({ default: m.WorkPlanDrawer })));
-const ArtifactsDrawer = lazy(() => import('./components/drawers/ArtifactsDrawer').then(m => ({ default: m.ArtifactsDrawer })));
-const TeamDrawer = lazy(() => import('./components/drawers/TeamDrawer').then(m => ({ default: m.TeamDrawer })));
-const WorkflowDrawer = lazy(() => import('./components/drawers/WorkflowDrawer').then(m => ({ default: m.WorkflowDrawer })));
+import { SidePanel } from './components/SidePanel';
+import './styles/theme.css';
 import { injectStatusDotAnimation } from './components/shared/StatusDot';
 import { ChatRoomErrorBoundary } from './components/shared/ErrorBoundary';
 import { ensureGlobalAnimations } from './components/styles';
-import type { DrawerKind, MetaPhaseId } from './types/state';
+import type { MetaPhaseId } from './types/state';
 
 interface Props {
   sessionId: string;
@@ -125,12 +121,6 @@ export function ChatRoomView({ sessionId, teamId }: Props) {
     cards[cards.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
-  // ── 抽屉操作 ──
-
-  const handleToggleDrawer = useCallback((d: DrawerKind) => {
-    dispatch({ type: 'UI/TOGGLE_DRAWER', kind: d });
-  }, [dispatch]);
-
   // ── 团队人数：优先用 fetch 到的完整 roster，否则降级到对话流派生 ──
   const teamCount = teamMembers.length > 0
     ? teamMembers.length
@@ -142,7 +132,7 @@ export function ChatRoomView({ sessionId, teamId }: Props) {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: 'var(--bg-base)',
+      background: 'var(--bg)',
     }}>
       {/* 顶部：双行进度条 + 抽屉按钮 + 控制 */}
       <PhaseProgressBar
@@ -153,14 +143,16 @@ export function ChatRoomView({ sessionId, teamId }: Props) {
         phases={state.metaPhases}
         currentPhaseId={state.currentMetaPhaseId}
         workPlan={state.workPlan}
-        artifactsCount={state.artifacts.length}
-        teamCount={teamCount}
-        openDrawers={state.openDrawers}
-        workspacePath={state.workspacePath}
         collabMode={collabMode}
         onJumpToPhase={handleJumpToPhase}
-        onToggleDrawer={handleToggleDrawer}
         onHardInterrupt={handleHardInterrupt}
+      />
+
+      {/* 实时指标条 */}
+      <MetricsBar
+        thinkingAgents={state.thinkingAgents}
+        teamCount={teamCount}
+        sessionId={sessionId}
       />
 
       {/* 主体：Chat（左）+ Drawer（右，可选） */}
@@ -204,47 +196,19 @@ export function ChatRoomView({ sessionId, teamId }: Props) {
           />
         </div>
 
-        {/* Drawer 区域 */}
-        <DrawerHost
-          openDrawers={state.openDrawers}
-          onClose={(kind) => dispatch({ type: 'UI/TOGGLE_DRAWER', kind })}
-          onCloseAll={() => dispatch({ type: 'UI/CLOSE_ALL_DRAWERS' })}
-          onWidthChange={(kind, width) => dispatch({ type: 'UI/SET_DRAWER_WIDTH', kind, width })}
-        >
-          <Suspense fallback={<div style={{ padding: 24, color: 'var(--text-muted)' }}>加载中...</div>}>
-          {state.openDrawers.some(d => d.kind === 'plan') && (
-            <WorkPlanDrawer
-              workPlan={state.workPlan}
-              workPlanDelta={state.workPlanDelta}
-            />
-          )}
-          {state.openDrawers.some(d => d.kind === 'artifacts') && (
-            <ArtifactsDrawer artifacts={state.artifacts} sessionId={sessionId} workspacePath={state.workspacePath} />
-          )}
-          {state.openDrawers.some(d => d.kind === 'team') && (
-            <TeamDrawer
-              messages={state.messages}
-              thinkingAgents={state.thinkingAgents}
-              teamMembers={teamMembers}
-            />
-          )}
-          {state.openDrawers.some(d => d.kind === 'workflow') && (
-            <WorkflowDrawer
-              teamId={teamId}
-              nodeStatuses={
-                state.workPlan
-                  ? Object.entries(state.workPlan.tasks).map(([taskId, t]) => ({
-                      nodeId: taskId,
-                      status: (t.status === 'retrying' ? 'running' : t.status) as any,
-                      output: '',
-                      error: t.status === 'failed' ? '执行失败' : undefined,
-                    }))
-                  : []
-              }
-            />
-          )}
-          </Suspense>
-        </DrawerHost>
+        {/* SidePanel — 任务/成员/文件 Tab */}
+        <SidePanel
+          workPlan={state.workPlan}
+          workPlanDelta={state.workPlanDelta}
+          messages={state.messages}
+          thinkingAgents={state.thinkingAgents}
+          teamMembers={teamMembers}
+          artifacts={state.artifacts}
+          sessionId={sessionId}
+          workspacePath={state.workspacePath}
+          teamId={teamId}
+          collabMode={collabMode}
+        />
       </div>
     </div>
     </ChatRoomErrorBoundary>

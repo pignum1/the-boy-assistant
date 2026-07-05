@@ -330,12 +330,12 @@ async def get_langgraph_workflow(
     svc = TeamModeService(db)
     cfg = await svc.get_langgraph_config(team_id)
     if not cfg or not cfg.workflow_id:
-        raise HTTPException(status_code=404, detail="该团队未绑定 workflow")
+        return {"workflow_id": "", "workflow_name": "", "nodes": [], "edges": []}
 
     from app.models.workflow import Workflow as WF, WorkflowNode, WorkflowEdge
     wf = await db.get(WF, cfg.workflow_id)
     if not wf:
-        raise HTTPException(status_code=404, detail="workflow 不存在")
+        return {"workflow_id": "", "workflow_name": "", "nodes": [], "edges": []}
 
     nodes = (await db.execute(
         __import__('sqlalchemy').select(WorkflowNode).where(

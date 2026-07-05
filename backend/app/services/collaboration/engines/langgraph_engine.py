@@ -374,8 +374,10 @@ async def run(
     team_agents: list,
     available_roles: list,
     send_fn: SendFn,
+    harness=None,
 ) -> None:
     """加载 workflow + node_bindings，按图执行各节点。"""
+    logger.info("[LG] run() called")
     from app.core.database import async_session
     from app.services.team_mode_service import TeamModeService
     from app.models.workflow import Workflow, WorkflowNode, WorkflowEdge
@@ -385,6 +387,7 @@ async def run(
     async with async_session() as db:
         svc = TeamModeService(db)
         cfg = await svc.get_langgraph_config(team.id)
+        logger.info("[LG] cfg ok, loading workflow...")
         if not cfg or not cfg.workflow_id:
             await send_fn({
                 "type": "error",
@@ -629,13 +632,12 @@ async def run(
                 harness=harness,
                 timeout_edge=timeout_edge, fallback_edge=fallback_edge,
             )
-
         # 逐层执行：层内节点 parallel，层间 sequential
         hitl_paused = False
         for level_idx, level in enumerate(levels):
             # 按节点类型分组，同时过滤掉 inactive 节点
             agent_nids = [nid for nid in level
-                          if node_by_id[nid].type.lower() == 'agent'
+                          if node_by_id[nid].type.lower() in ('agent', 'task', 'worker')
                           and nid in active_nodes]
             condition_nids = [nid for nid in level
                               if node_by_id[nid].type.lower() == 'condition'
@@ -926,7 +928,7 @@ async def run(
                         if pid not in node_by_id:
                             continue
                         pnode = node_by_id[pid]
-                        if pnode.type.lower() == 'agent':
+                        if pnode.type.lower() in ('agent', 'task', 'worker'):
                             # 保存原始 config，注入 retry feedback 后重新执行
                             saved_config = dict(pnode.config) if isinstance(pnode.config, dict) else {}
                             feedback = (
@@ -1270,7 +1272,7 @@ async def resume(session_id: str, user_response, send_fn: SendFn, harness=None) 
         for li in range(level_idx + 1, len(levels)):
             lvl = levels[li]
             agent_nids = [nid for nid in lvl
-                          if node_by_id[nid].type.lower() == 'agent'
+                          if node_by_id[nid].type.lower() in ('agent', 'task', 'worker')
                           and nid in active_nodes]
             condition_nids = [nid for nid in lvl
                               if node_by_id[nid].type.lower() == 'condition'

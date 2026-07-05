@@ -60,7 +60,8 @@ export function ChatStream({
       style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '14px 18px',
+        padding: '18px 22px',
+        background: 'var(--bg)',
       }}
     >
       {messages.length === 0 && (

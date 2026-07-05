@@ -96,8 +96,15 @@ export function chatRoomReducer(
     }
 
     case 'CTRL/HISTORY_LOADED': {
-      // 历史加载：同时填充 messages + workPlan + artifacts，避免 reload 后抽屉为空
-      const next: ReducerState = { ...state, messages: action.messages };
+      // 历史加载：合并已有消息（WS 可能先于历史加载创建了 HITL 卡片），去重 HITL
+      const existingHitlIds = new Set(
+        state.messages.filter(m => m.kind === 'hitl_card').map(m => (m as HitlCardItem).hitlId)
+      );
+      const filteredHistory = action.messages.filter(m => {
+        if (m.kind !== 'hitl_card') return true;
+        return !existingHitlIds.has((m as HitlCardItem).hitlId);
+      });
+      const next: ReducerState = { ...state, messages: [...state.messages, ...filteredHistory] };
       if (action.workPlan !== undefined) {
         next.workPlan = action.workPlan;
         if (action.workPlan) next.workPlanVersion = state.workPlanVersion + 1;
@@ -110,6 +117,25 @@ export function chatRoomReducer(
       }
       if (action.workspacePath !== undefined) {
         next.workspacePath = action.workspacePath;
+      }
+      // 恢复 pendingHitl
+      let lastHitl: PendingHitl | null = null;
+      for (const item of [...next.messages].reverse()) {
+        if (item.kind === 'hitl_card' && item.cardState !== 'answered') {
+          lastHitl = {
+            id: (item as HitlCardItem).hitlId,
+            kind: (item as HitlCardItem).hitlKind,
+            message: (item as HitlCardItem).message,
+            options: (item as HitlCardItem).options,
+            cardState: 'pending',
+            createdAt: item.timestamp,
+          };
+          break;
+        }
+      }
+      if (lastHitl) {
+        next.pendingHitl = lastHitl;
+        next.executionState = 'hitl_pending';
       }
       return next;
     }

@@ -141,7 +141,11 @@ export function useWsEvents({
         }
       };
 
-      ws.onerror = (err) => { console.error('[useWsEvents] WebSocket error:', err); ws.close(); };
+      ws.onerror = (err) => {
+        if (!mounted) return;
+        console.error('[useWsEvents] WebSocket error:', err);
+        ws.close();
+      };
       return ws;
     }
 
@@ -150,7 +154,13 @@ export function useWsEvents({
     return () => {
       mounted = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      try { wsRef.current?.close(); } catch { /* noop */ }
+      const ws = wsRef.current;
+      if (ws && ws.readyState !== WebSocket.CONNECTING) {
+        try { ws.close(); } catch { /* noop */ }
+      }
+      // 若 readyState === CONNECTING，不强行 close——否则浏览器会记
+      // "closed before the connection is established" warning。
+      // 等它连上后 onopen 发现 mounted=false 自动关闭，不留警告。
       wsRef.current = null;
     };
   }, [sessionId, dispatch, dispatchInbound, maxRetries]);

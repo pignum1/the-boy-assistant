@@ -98,10 +98,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     <div style={{
       display: 'flex',
       alignItems: 'flex-end',
-      gap: 10,
-      padding: '12px 14px',
-      borderTop: '1px solid var(--border-subtle)',
-      background: 'var(--bg-card)',
+      gap: 8,
+      padding: '12px 18px',
+      borderTop: '1px solid var(--border)',
+      background: 'var(--bg)',
     }}>
       <textarea
         ref={taRef}
@@ -112,17 +112,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         rows={1}
         style={{
           flex: 1,
-          padding: '8px 12px',
-          background: 'var(--bg-elevated)',
-          color: 'var(--text-primary)',
-          border: '1px solid var(--border-medium)',
-          borderRadius: 6,
+          padding: '10px 14px',
+          background: 'var(--bg)',
+          color: 'var(--text)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: 10,
           fontSize: 13,
-          fontFamily: 'var(--font-body)',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
           lineHeight: 1.5,
           resize: 'none',
           outline: 'none',
-          minHeight: 36,
+          minHeight: 40,
           maxHeight: 140,
         }}
       />
@@ -130,19 +130,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         onClick={handleSubmit}
         disabled={text.trim().length === 0}
         style={{
-          padding: '8px 18px',
-          borderRadius: 6,
+          padding: '8px 16px',
+          borderRadius: 8,
           border: 'none',
-          background:
-            text.trim().length === 0 ? 'var(--bg-elevated)' :
-            color === 'orange' ? 'var(--gold-500)' : 'var(--blue-400)',
-          color: text.trim().length === 0 ? 'var(--text-muted)' : '#0a0f1e',
-          fontSize: 12,
+          background: text.trim().length === 0 ? 'var(--bg-bubble)' : 'var(--primary)',
+          color: text.trim().length === 0 ? 'var(--text-mute)' : '#fff',
+          fontSize: 12.5,
           fontWeight: 600,
           cursor: text.trim().length === 0 ? 'not-allowed' : 'pointer',
-          fontFamily: 'var(--font-body)',
-          minWidth: 80,
-          height: 36,
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+          minWidth: 64,
+          height: 40,
+          whiteSpace: 'nowrap',
         }}
       >
         {label}

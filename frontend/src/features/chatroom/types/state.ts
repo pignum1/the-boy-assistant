@@ -263,6 +263,23 @@ export interface ReasoningDetail {
   exec_mode?: string;
   /** LLM 调用次数 */
   iterations?: number;
+  // ── 模式专属数据（后端按执行模式填充，前端按模式渲染）──
+  /** ReAct 迭代链 (THOUGHT/ACTION/OBSERVATION) */
+  history?: string[];
+  /** Reflexion 反思轮次 */
+  reflections?: Array<Record<string, unknown>>;
+  /** Self-Consistency 采样结果 */
+  samples?: string[];
+  /** Self-Consistency 是否已综合 */
+  merged?: boolean;
+  /** ReWOO 执行计划 */
+  plan?: Record<string, unknown>;
+  /** ReWOO 工具执行结果 */
+  tool_results?: Array<Record<string, unknown>>;
+  /** Plan&Execute 审查评分 */
+  review_score?: number;
+  /** 主管分析 (snake_case 兼容) */
+  supervisor_analysis?: string;
 }
 
 /** 时间线条目联合类型 */

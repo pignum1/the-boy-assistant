@@ -77,63 +77,69 @@ export function TeamDrawer({ messages, thinkingAgents, teamMembers }: Props) {
 
 function AgentRow({ agent }: { agent: ObservedAgent }) {
   const statusColor =
-    agent.status === 'thinking' ? 'var(--blue-400)' :
+    agent.status === 'thinking' ? 'var(--cyan-400)' :
     agent.status === 'done' ? 'var(--green-400)' :
     'var(--text-dim)';
   const statusIcon =
     agent.status === 'thinking' ? '⏳' :
     agent.status === 'done' ? '✓' :
     '○';
+  const isActive = agent.status === 'thinking';
+  const hasCapabilities = agent.capabilities.length > 0;
   return (
     <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 8,
-      padding: '6px 8px',
-      background: agent.status === 'thinking' ? 'var(--blue-bg)' : 'rgba(148,163,184,0.03)',
-      border: `1px solid ${agent.status === 'thinking' ? 'var(--blue-border)' : 'var(--border-subtle)'}`,
-      borderRadius: 4,
-    }}>
-      <AgentAvatar emoji={agent.emoji} name={agent.name} size={26} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 12,
-          fontWeight: 500,
-          color: 'var(--text-primary)',
-        }}>
-          {agent.name}
+      padding: '8px 10px',
+      borderRadius: 10,
+      background: isActive ? 'rgba(6,182,212,0.04)' : 'var(--bg-soft)',
+      border: `1px solid ${isActive ? 'var(--cyan-border)' : 'var(--border-subtle)'}`,
+      borderLeft: `3px solid ${statusColor}`,
+      // hover 展开能力列表
+    }} className="team-agent-row">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <AgentAvatar emoji={agent.emoji} name={agent.name} size={28} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {agent.name}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {agent.lastSummary ?? agent.role}
+          </div>
         </div>
-        <div style={{
-          fontSize: 10,
-          color: 'var(--text-muted)',
-          fontFamily: 'var(--font-mono)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {agent.lastSummary ?? agent.role}
-        </div>
-      </div>
-      <span style={{
-        fontSize: 12,
-        color: statusColor,
-        fontFamily: 'var(--font-mono)',
-        minWidth: 14,
-        textAlign: 'center',
-      }}>
-        {statusIcon}
-      </span>
-      {agent.messageCount > 0 && (
-        <span style={{
-          fontSize: 10,
-          color: 'var(--text-muted)',
-          fontFamily: 'var(--font-mono)',
-          minWidth: 18,
-          textAlign: 'right',
-        }}>
-          {agent.messageCount}
+        <span style={{ fontSize: 12, color: statusColor, minWidth: 16, textAlign: 'center' }}>
+          {statusIcon}
         </span>
+        {agent.messageCount > 0 && (
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', minWidth: 18, textAlign: 'right' }}>
+            {agent.messageCount}
+          </span>
+        )}
+      </div>
+      {/* hover 展开：MCP / Skill */}
+      {hasCapabilities && (
+        <div className="agent-caps" style={{
+          maxHeight: 0, overflow: 'hidden', opacity: 0,
+          transition: 'max-height 0.25s, opacity 0.2s, margin 0.25s, padding 0.25s',
+          fontSize: 11, color: 'var(--text-muted)',
+          display: 'flex', flexWrap: 'wrap', gap: 4,
+          marginTop: 0, paddingTop: 0,
+          borderTop: '1px solid transparent',
+        }}>
+          {agent.capabilities.slice(0, 6).map((c: string) => (
+            <span key={c} style={{
+              background: 'var(--bg-raised)',
+              padding: '1px 6px', borderRadius: 3,
+              fontFamily: 'var(--font-mono)', fontSize: 10,
+            }}>{c}</span>
+          ))}
+        </div>
       )}
+      <style>{`
+        .team-agent-row:hover .agent-caps {
+          max-height: 80px !important; opacity: 1 !important;
+          margin-top: 6px !important; padding-top: 6px !important;
+          border-top-color: var(--border-subtle) !important;
+        }
+      `}</style>
     </div>
   );
 }

@@ -593,6 +593,9 @@ async def m1_analyze_node(state: CollabState) -> dict[str, Any]:
                 "tool_calls": reasoning.get("tool_calls", []),
                 "latency": reasoning.get("latency", 0),
                 "supervisor_analysis": analysis_for_frontend,
+                "exec_mode": pe_result.get("exec_mode", "single_pass"),
+                "iterations": pe_result.get("iterations", 1),
+                "history": reasoning.get("history", []),
             }
             updates["_content"] = updates.get("hitl_message", updates.get("analysis_summary", ""))
             # Use actual agent name, not the internal node name

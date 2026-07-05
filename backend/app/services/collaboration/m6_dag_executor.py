@@ -134,6 +134,16 @@ async def m6_execute_node(state: CollabState) -> dict[str, Any]:
                             "tool_calls": reasoning.get("tool_calls", []),
                             "model_routing": reasoning.get("model_routing", {}),
                             "decision_summary": f"完成任务: {title}",
+                            "exec_mode": reasoning.get("exec_mode", ""),
+                            "iterations": reasoning.get("iterations", 0),
+                            "history": reasoning.get("history", []),
+                            "reflections": reasoning.get("reflections", []),
+                            "samples": reasoning.get("samples", []),
+                            "merged": reasoning.get("merged", False),
+                            "plan": reasoning.get("plan", {}),
+                            "tool_results": reasoning.get("tool_results", []),
+                            "review_score": reasoning.get("review_score"),
+                            "supervisor_analysis": reasoning.get("supervisor_analysis", ""),
                         }
                         meta = {k: v for k, v in meta.items() if v not in (None, "", [])}
                         await MemoryManager(db).save_memory(
@@ -146,7 +156,32 @@ async def m6_execute_node(state: CollabState) -> dict[str, Any]:
             except Exception as e:
                 logger.warning(f"M6 worker persistence failed for {task.get('id')}: {e}")
 
-            # 1. agent_message：worker 主消息，绑定到 m6 阶段 + task_id
+            # 1. reasoning_complete 先发 → ws.py 缓存，后续 agent_message 保存时合并
+            if reasoning:
+                await manager.broadcast_to_session(session_id, {
+                    "type": "reasoning_complete",
+                    "source": "m6_execute",
+                    "timestamp": ts,
+                    "payload": {
+                        "agent": agent_name,
+                        "thinking_steps": reasoning.get("thinking_steps", ""),
+                        "model_routing": reasoning.get("model_routing", {}),
+                        "tool_calls": reasoning.get("tool_calls", []),
+                        "decision_summary": f"完成任务: {task.get('title', task.get('id', ''))}",
+                        "latency": int(latency_s * 1000) if latency_s else 0,
+                        "exec_mode": reasoning.get("exec_mode", ""),
+                        "iterations": reasoning.get("iterations", 0),
+                        "history": reasoning.get("history", []),
+                        "reflections": reasoning.get("reflections", []),
+                        "samples": reasoning.get("samples", []),
+                        "merged": reasoning.get("merged", False),
+                        "plan": reasoning.get("plan", {}),
+                        "tool_results": reasoning.get("tool_results", []),
+                        "review_score": reasoning.get("review_score"),
+                        "supervisor_analysis": reasoning.get("supervisor_analysis", ""),
+                    },
+                })
+            # 2. agent_message：worker 主消息，保存时自动合并 reasoning_by_agent
             await manager.broadcast_to_session(session_id, {
                 "type": "agent_message",
                 "source": "m6_execute",
@@ -160,21 +195,6 @@ async def m6_execute_node(state: CollabState) -> dict[str, Any]:
                     "task_id": task.get("id", ""),
                 },
             })
-            # 2. reasoning_complete：附带思考过程 / 工具调用
-            if reasoning:
-                await manager.broadcast_to_session(session_id, {
-                    "type": "reasoning_complete",
-                    "source": "m6_execute",
-                    "timestamp": ts,
-                    "payload": {
-                        "agent": agent_name,
-                        "thinking_steps": reasoning.get("thinking_steps", ""),
-                        "model_routing": reasoning.get("model_routing", {}),
-                        "tool_calls": reasoning.get("tool_calls", []),
-                        "decision_summary": f"完成任务: {task.get('title', task.get('id', ''))}",
-                        "latency": int(latency_s * 1000) if latency_s else 0,
-                    },
-                })
             # 3. files_changed：worker 产物，立刻推送（不等 M6 整体完成）
             if files:
                 await manager.broadcast_to_session(session_id, {

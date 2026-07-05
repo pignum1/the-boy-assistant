@@ -145,13 +145,25 @@ function toTimelineItem(m: RawHistoryMessage): TimelineItem | null {
   if (m.role === 'assistant' || m.role === 'system') {
     const agentName = (meta.agent as string) || m.agent_name || 'Agent';
     const reasoning: ReasoningDetail | undefined =
-      (meta.thinking_steps || meta.tool_calls || meta.model_routing || meta.decision_summary)
+      (meta.thinking_steps || meta.tool_calls || meta.model_routing || meta.decision_summary
+        || meta.history || meta.reflections || meta.samples || meta.plan || meta.tool_results
+        || meta.review_score != null || meta.exec_mode)
         ? {
             supervisorAnalysis: meta.supervisor_analysis as string | undefined,
             thinkingSteps: meta.thinking_steps as string | undefined,
             decisionSummary: meta.decision_summary as string | undefined,
             modelRouting: meta.model_routing as ReasoningDetail['modelRouting'],
             toolCalls: meta.tool_calls as ReasoningDetail['toolCalls'],
+            execMode: meta.exec_mode as string | undefined,
+            iterations: meta.iterations as number | undefined,
+            // 模式专属数据（与 AgentCardExpandable 读取的 key 保持一致）
+            history: meta.history as string[] | undefined,
+            reflections: meta.reflections as Array<Record<string, unknown>> | undefined,
+            samples: meta.samples as string[] | undefined,
+            merged: meta.merged as boolean | undefined,
+            plan: meta.plan as Record<string, unknown> | undefined,
+            tool_results: meta.tool_results as Array<Record<string, unknown>> | undefined,
+            review_score: meta.review_score as number | undefined,
           }
         : undefined;
 

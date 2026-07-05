@@ -314,12 +314,18 @@ function PersonaPanel({ persona, onClose, onRefresh }: {
   };
 
   // Load reference data
+  // 注意：/skills 与 /mcp-servers 返回的是 { items: [...] } 分页结构（非裸数组），
+  // 直接 setAllSkills(data) 会让 state 变成对象，后续 .filter 抛 TypeError。
+  // 统一解包为数组（与 fetchPersonas 同样的防御范式）。
+  const unwrapItems = <T,>(data: unknown): T[] =>
+    Array.isArray(data) ? data : ((data as { items?: T[] })?.items ?? []);
+
   useEffect(() => {
-    api.get<SkillSummary[]>('/api/v1/skills')
-      .then((skills) => setAllSkills(skills))
+    api.get<unknown>('/api/v1/skills')
+      .then((data) => setAllSkills(unwrapItems<SkillSummary>(data)))
       .catch(() => {});
-    api.get<MCPServerSummary[]>('/api/v1/mcp-servers')
-      .then((servers) => setAllServers(servers))
+    api.get<unknown>('/api/v1/mcp-servers')
+      .then((data) => setAllServers(unwrapItems<MCPServerSummary>(data)))
       .catch(() => {});
   }, []);
 

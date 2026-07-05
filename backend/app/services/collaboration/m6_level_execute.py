@@ -215,7 +215,33 @@ async def _push_worker_message(
         # Persist to Memory
         _persist_worker_result(session_id, task, content, reasoning, agent_name, latency_s)
 
-        # 1. agent_message
+        # 1. reasoning_complete 先发 → ws.py 缓存到 reasoning_by_agent
+        if reasoning:
+            await manager.broadcast_to_session(session_id, {
+                "type": "reasoning_complete",
+                "source": "m6_level_execute",
+                "timestamp": ts,
+                "payload": {
+                    "agent": agent_name,
+                    "thinking_steps": reasoning.get("thinking_steps", ""),
+                    "model_routing": reasoning.get("model_routing", {}),
+                    "tool_calls": reasoning.get("tool_calls", []),
+                    "decision_summary": f"完成任务: {task.get('title', task.get('id', ''))}",
+                    "latency": int(latency_s * 1000) if latency_s else 0,
+                    "exec_mode": reasoning.get("exec_mode", ""),
+                    "iterations": reasoning.get("iterations", 0),
+                    "history": reasoning.get("history", []),
+                    "reflections": reasoning.get("reflections", []),
+                    "samples": reasoning.get("samples", []),
+                    "merged": reasoning.get("merged", False),
+                    "plan": reasoning.get("plan", {}),
+                    "tool_results": reasoning.get("tool_results", []),
+                    "review_score": reasoning.get("review_score"),
+                    "supervisor_analysis": reasoning.get("supervisor_analysis", ""),
+                },
+            })
+
+        # 2. agent_message → ws.py 保存时合并 reasoning_by_agent[agent_name]
         await manager.broadcast_to_session(session_id, {
             "type": "agent_message",
             "source": "m6_level_execute",
@@ -229,22 +255,6 @@ async def _push_worker_message(
                 "task_id": task.get("id", ""),
             },
         })
-
-        # 2. reasoning_complete
-        if reasoning:
-            await manager.broadcast_to_session(session_id, {
-                "type": "reasoning_complete",
-                "source": "m6_level_execute",
-                "timestamp": ts,
-                "payload": {
-                    "agent": agent_name,
-                    "thinking_steps": reasoning.get("thinking_steps", ""),
-                    "model_routing": reasoning.get("model_routing", {}),
-                    "tool_calls": reasoning.get("tool_calls", []),
-                    "decision_summary": f"完成任务: {task.get('title', task.get('id', ''))}",
-                    "latency": int(latency_s * 1000) if latency_s else 0,
-                },
-            })
 
         # 3. files_changed
         if files:
@@ -303,6 +313,16 @@ def _persist_worker_result(
                         "tool_calls": reasoning.get("tool_calls", []),
                         "model_routing": reasoning.get("model_routing", {}),
                         "decision_summary": f"完成任务: {title}",
+                        "exec_mode": reasoning.get("exec_mode", ""),
+                        "iterations": reasoning.get("iterations", 0),
+                        "history": reasoning.get("history", []),
+                        "reflections": reasoning.get("reflections", []),
+                        "samples": reasoning.get("samples", []),
+                        "merged": reasoning.get("merged", False),
+                        "plan": reasoning.get("plan", {}),
+                        "tool_results": reasoning.get("tool_results", []),
+                        "review_score": reasoning.get("review_score"),
+                        "supervisor_analysis": reasoning.get("supervisor_analysis", ""),
                     }
                     meta = {k: v for k, v in meta.items() if v not in (None, "", [])}
                     await MemoryManager(db).save_memory(

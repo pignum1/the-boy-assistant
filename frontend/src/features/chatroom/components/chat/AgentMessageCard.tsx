@@ -23,27 +23,11 @@ export function getAgentColorSet(agentName: string) {
   return { accent, bg: `${accent}1A`, border: `${accent}44` };
 }
 
-import { AgentCardHeader, hasExpandableContent } from './AgentCardHeader';
-import { AgentCardExpandable } from './AgentCardExpandable';
+import { AgentCardHeader } from './AgentCardHeader';
+import { ReasoningBlock } from './ReasoningBlock';
 import { renderContentWithCodeBlocks } from './CodeBlockRenderer';
 
 const LONG_TEXT_THRESHOLD = 500;
-
-const MODE_LABEL: Record<string, string> = {
-  single_pass: '⚡单次', chain_of_thought: '🔗思维链', plan_execute: '📋规划执行',
-  rewoo: '📦ReWOO', react: '🔄ReAct', reflexion: '🪞Reflexion', self_consistency: '🗳️自一致性',
-};
-const NAME_MODE_HINT: Record<string, string> = {
-  '产品经理': 'plan_execute', '架构师': 'self_consistency', '后端': 'react',
-  '前端': 'single_pass', '测试': 'reflexion', 'UI': 'chain_of_thought',
-  '设计': 'chain_of_thought', '部署': 'rewoo', '运维': 'rewoo',
-};
-function inferMode(agentName: string): string {
-  for (const [kw, mode] of Object.entries(NAME_MODE_HINT)) {
-    if (agentName.includes(kw)) return mode;
-  }
-  return 'single_pass';
-}
 
 interface Props {
   item: AgentMessageItem;
@@ -60,13 +44,6 @@ export function AgentMessageCard({ item, workPlan, artifacts, onToggleExpand }: 
   const [copied, setCopied] = useState(false);
   const displayContent = (!isLong || textExpanded) ? item.content : item.content.slice(0, LONG_TEXT_THRESHOLD);
   const agentColors = useMemo(() => getAgentColorSet(item.agentName), [item.agentName]);
-  const canExpand = hasExpandableContent(item);
-
-  // 模式名
-  const reasoning = item.reasoning as Record<string, unknown> | undefined;
-  const execMode = (item.execMode || reasoning?.execMode || reasoning?.exec_mode || inferMode(item.agentName)) as string;
-  const modeLabel = MODE_LABEL[execMode] || execMode;
-  const iterations = (reasoning?.iterations as number) || 0;
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(item.content).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
@@ -76,52 +53,7 @@ export function AgentMessageCard({ item, workPlan, artifacts, onToggleExpand }: 
 
   return (
     <div style={{ margin: '10px 0' }}>
-      {/* ── 独立折叠面板：思考链（消息气泡上方，推理过程先于结论）── */}
-      {canExpand && (
-        <div style={{ marginBottom: 6, marginLeft: 8 }}>
-          <button
-            onClick={() => onToggleExpand(item.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              width: '100%', maxWidth: 400,
-              padding: '6px 12px',
-              background: 'var(--bg-elevated)',
-              border: `1px solid ${accent}33`,
-              borderLeft: `3px solid ${accent}66`,
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontSize: 11,
-              color: 'var(--text-secondary)',
-              fontFamily: 'inherit',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = `${accent}0D`)}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
-          >
-            <span style={{ fontSize: 14 }}>🧠</span>
-            <span style={{ fontWeight: 600 }}>思考过程</span>
-            <span style={{ color: accent, fontWeight: 500 }}>{modeLabel}</span>
-            {iterations > 0 && <span style={{ color: 'var(--text-muted)' }}>· {iterations}次调用</span>}
-            <span style={{ marginLeft: 'auto', fontSize: 10, transition: 'transform 0.2s', transform: item.expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-          </button>
-
-          {item.expanded && (
-            <div style={{
-              marginTop: 4,
-              padding: '10px 14px',
-              background: 'var(--bg-elevated)',
-              border: `1px solid ${accent}22`,
-              borderLeft: `3px solid ${accent}55`,
-              borderRadius: 6,
-              maxWidth: 600,
-            }}>
-              <AgentCardExpandable item={item} artifacts={itemArtifacts} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 消息气泡（思考过程下方，最终答案）── */}
+      {/* ── 消息气泡（推理块内嵌 + 最终答案）── */}
       <div data-message-id={item.id} style={{
         padding: '10px 12px',
         background: agentColors.bg,
@@ -140,6 +72,9 @@ export function AgentMessageCard({ item, workPlan, artifacts, onToggleExpand }: 
             whiteSpace: 'nowrap', marginLeft: 8, flexShrink: 0, transition: 'all 0.15s',
           }}>{copied ? '✓ 已复制' : '📋 复制'}</button>
         </div>
+
+        {/* ── 推理块（内嵌，折叠头+展开体）── */}
+        <ReasoningBlock item={item} />
 
         <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 4 }}>
           {renderContentWithCodeBlocks(displayContent, () => {})}
