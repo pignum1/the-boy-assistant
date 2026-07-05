@@ -33,13 +33,17 @@ The Boy Assistant 是一个**企业级 AI Multi-Agent 协作平台**，提供三
 
 ## 平台演示
 
+### 三种协作模式（v5.0 聊天室升级）
+
+| 💬 Swarm 群聊 | 👑 Supervisor 主管 | 🔀 LangGraph 图编排 |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/swarm-mode.png" width="280" /> | <img src="docs/screenshots/supervisor-mode.png" width="280" /> | <img src="docs/screenshots/langgraph-mode.png" width="280" /> |
+| 多 Agent 自由讨论 · 思维链可见 | 任务分解 DAG · 推理块折叠 | 流程图 + 执行状态 · 节点进度 |
+
 ### 工作台
 <img src="docs/images/demo-00-dashboard.png" width="100%" />
 
-### 多 Agent 协作讨论中
-<img src="docs/images/demo-01-chat-thinking.png" width="100%" />
-
-### Agent 回复（含执行模式标签 + 思考过程）
+### Agent 回复（含执行模式徽标 + 折叠推理块）
 <img src="docs/images/demo-02-chat-results.png" width="100%" />
 
 ### LangFuse 全链路追踪 — Traces 视图
@@ -132,6 +136,9 @@ The Boy Assistant 是一个**企业级 AI Multi-Agent 协作平台**，提供三
 cd backend
 cp .env.example .env          # 编辑 .env 填入 LLM API Key
 docker compose up -d           # PostgreSQL + Redis
+
+# 初始化数据库（表结构 + 三种模式团队 + LangGraph 工作流示例）
+docker exec backend-postgres-1 psql -U theboy -d theboy -f /dev/stdin < docs/init.sql
 ```
 
 ### 2. 启动后端
@@ -303,6 +310,14 @@ the-boy-assistant/
 │   └── src/
 │       └── features/
 │           ├── chatroom/                   # 💬 聊天室 (核心)
+│           │   ├── components/
+│           │   │   ├── SidePanel.tsx       # 🆕 任务/成员/文件/流程 Tab
+│           │   │   ├── chat/
+│           │   │   │   └── ReasoningBlock.tsx  # 🆕 推理块内嵌折叠
+│           │   │   └── header/
+│           │   │       └── MetricsBar.tsx      # 🆕 实时指标条
+│           │   └── styles/
+│           │       └── theme.css               # 🆕 设计标记
 │           ├── resources/                  # Agent/Persona/Skill 管理
 │           ├── teams/                      # 团队管理
 │           ├── sop-designer/               # SOP 设计器
@@ -312,7 +327,10 @@ the-boy-assistant/
     ├── system-architecture-v5.md          # 完整架构文档 (13 章)
     ├── agent-execution-modes.md           # 执行模式设计文档
     ├── monitoring-observability-module.md # 可观测性设计文档
+    ├── chatroom-redesign-plan.md          # 🆕 聊天室改造计划
+    ├── init.sql                           # 🆕 初始化 SQL (表结构+种子数据)
     ├── images/                            # 8 张架构图 PNG
+    ├── screenshots/                       # 🆕 三模式截图
     └── 架构图-v5-wip/                     # 架构图 HTML 源文件
 ```
 
