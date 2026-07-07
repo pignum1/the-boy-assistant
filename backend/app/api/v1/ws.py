@@ -9,6 +9,7 @@
 
 import json
 import logging
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -69,6 +70,46 @@ async def websocket_session_events(websocket: WebSocket, session_id: str):
 
     await manager.connect_session(session_id, websocket)
 
+    # WS 重连时检查暂停的 HITL，立即发送卡片（不等历史加载）
+    try:
+        from app.services.collaboration.engines.langgraph_pause import _paused as _ht_paused
+        from app.services.collaboration.engines.langgraph_pause import _load_paused_state as _ht_load_state
+
+        paused_state = _ht_paused.get(session_id)
+        if not paused_state:
+            paused_state = await _ht_load_state(session_id)
+        if paused_state:
+            hitl_nid = paused_state.get("pause_nid") or paused_state.get("hitl_nid", "")
+            node_by_id = paused_state.get("node_by_id", {})
+            hnode = node_by_id.get(hitl_nid) if hitl_nid else None
+            if hnode:
+                hconfig = hnode.config if isinstance(hnode.config, dict) else {}
+                hitl_label = hnode.label or hnode.node_key or ""
+                hitl_msg = hconfig.get("instruction") or hconfig.get("prompt") or f"请审核并确认节点「{hitl_label}」的输出。"
+                await websocket.send_json({
+                    "type": "request_clarification",
+                    "source": "langgraph",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {
+                        "task_id": str(hnode.id),
+                        "node_key": hnode.node_key or "",
+                        "label": hitl_label,
+                        "message": hitl_msg,
+                        "timeout": hconfig.get("timeout", 300),
+                        "mode": "langgraph_hitl",
+                        "type": "review",
+                        "hitl_invoke_id": paused_state.get("hitl_invoke_id", ""),
+                        "options": [
+                            {"label": "✅ 通过", "value": "approve", "description": "审核通过，继续执行"},
+                            {"label": "❌ 打回", "value": "reject", "description": "打回重新修改"},
+                            {"label": "💬 自定义回复", "value": "answer", "description": "输入审核意见"},
+                        ],
+                    },
+                })
+                logger.info(f"WS reconnect: re-sent request_clarification for session {session_id}")
+    except Exception as e:
+        logger.warning(f"Failed to re-send HITL on WS reconnect: {e}")
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -87,17 +128,47 @@ async def websocket_session_events(websocket: WebSocket, session_id: str):
                 if msg_type == "hitl_resume":
                     # Build structured response dict from client message
                     hitl_type = msg.get("hitl_type", "select")
+                    user_raw_response = msg.get("response", "")
+                    if isinstance(user_raw_response, str):
+                        resp_str = user_raw_response
+                    elif isinstance(user_raw_response, dict):
+                        resp_str = user_raw_response.get("content", str(user_raw_response))
+                    else:
+                        resp_str = str(user_raw_response)
+
+                    # 根据回答内容生成可读的显示文本
+                    if resp_str == "approve":
+                        display_content = "✅ 审核通过，继续执行"
+                    elif resp_str == "reject":
+                        display_content = "❌ 打回重新修改"
+                    elif resp_str == "reject_all":
+                        display_content = "🔄 全部打回，后端和前端均需修改"
+                    elif resp_str == "abort":
+                        display_content = "⏹ 终止流程"
+                    else:
+                        display_content = f"💬 审核意见：{resp_str}"
+
+                    # 从暂停状态获取 hitl_invoke_id（匹配通知记录）
+                    hitl_id = ""
+                    try:
+                        from app.services.collaboration.engines.langgraph_pause import _paused as _ht_paused_resume
+                        ps = _ht_paused_resume.get(session_id)
+                        if ps:
+                            hitl_id = ps.get("hitl_invoke_id", "")
+                    except Exception:
+                        pass
                     response_data = {
-                        "hitl_id": msg.get("hitl_id", ""),
+                        "hitl_id": hitl_id,
                         "hitl_type": hitl_type,
+                        "content": display_content,
                     }
                     if hitl_type in ("select", "multi_select", "confirmation", "escalation", "clarification"):
-                        response_data["values"] = msg.get("values", [msg.get("response", "")])
+                        response_data["values"] = msg.get("values", [resp_str] if resp_str else [])
                     elif hitl_type == "answer":
-                        response_data["feedback"] = msg.get("response", "")
+                        response_data["feedback"] = resp_str
                     elif hitl_type == "review":
-                        response_data["approved"] = msg.get("approved", False)
-                        response_data["feedback"] = msg.get("feedback", "")
+                        response_data["approved"] = msg.get("approved", resp_str == "approve")
+                        response_data["feedback"] = msg.get("feedback", resp_str)
                     await _handle_hitl_resume(
                         websocket=websocket,
                         session_id=session_id,
@@ -350,13 +421,17 @@ async def _handle_collab_chat(
             nonlocal agent_responses, reasoning_by_agent
             data_type = data.get("type", "")
 
-            # 先发送 WebSocket 消息（保证实时性）。若客户端中途断开（切换会话/
-            # 关闭页面），send 会抛 RuntimeError — 吞掉它以免整个 graph 中断，
-            # 后续持久化仍会继续，刷新页面即可恢复消息。
+            # 先发送 WebSocket 消息（保证实时性）
             try:
                 await websocket.send_json(data)
-            except Exception as e:
-                logger.debug(f"WS send skipped (client gone?): {e}")
+            except Exception:
+                # 直连失败 → 通过 broadcaster 广播到 session 所有客户端
+                try:
+                    from app.services.ws_broadcaster import broadcaster as _bcast
+                    if _bcast:
+                        await _bcast.broadcast_to_session(session_id, data)
+                except Exception:
+                    pass
 
             # 然后根据类型处理持久化
             if data_type == "agent_message":
@@ -422,16 +497,19 @@ async def _handle_collab_chat(
                         "review_score": payload.get("review_score"),
                     }
 
-            elif data_type == "hitl_notification" or data_type == "hitl_request":
-                # 持久化 HITL 卡片数据到消息历史
+            elif data_type in ("hitl_notification", "hitl_request", "request_clarification"):
+                # 持久化 HITL 卡片数据到消息历史（含 langgraph 的 request_clarification）
                 payload = data.get("payload", {})
                 try:
+                    # 使用 engine 传过来的 hitl_invoke_id，否则生成 UUID
+                    hitl_id = payload.get("hitl_invoke_id") or str(uuid.uuid4())
                     hitl_msg = payload.get("message", "")
                     combined = f"⚠️ **需要您的决策**\n\n{hitl_msg}"
                     meta = {
                         "role": "system",
                         "hitl_notification": True,
-                        "hitl_type": payload.get("type", "confirmation"),
+                        "hitl_id": hitl_id,
+                        "hitl_type": payload.get("type", payload.get("mode", "confirmation")),
                         "hitl_message": hitl_msg,
                         "hitl_options": payload.get("options", []),
                     }
@@ -527,8 +605,10 @@ async def _handle_hitl_resume(
 
         mm = MemoryManager(db)
 
-        # 先保存用户的 HITL 决策
-        display_text = _format_hitl_response_for_display(user_response)
+        # 先保存用户的 HITL 决策（含 hitl_notification 元数据以便刷新后重建已答卡片）
+        display_text = user_response.get("content", "") or _format_hitl_response_for_display(user_response)
+        user_values = user_response.get("values", [])
+        selected_value = user_values[0] if user_values else user_response.get("content", "")
         try:
             await mm.save_memory(
                 level=MemoryLevel.context,
@@ -537,12 +617,14 @@ async def _handle_hitl_resume(
                 team_id=session.team_id,
                 session_id=session_id,
                 importance=0.5,
-                created_by="user",
+                created_by="system",
                 metadata_={
-                    "role": "user",
-                    "hitl_response": True,
-                    "hitl_type": user_response.get("hitl_type", "select"),
+                    "role": "system",
+                    "hitl_response": display_text,  # 回答文本
+                    "hitl_type": user_response.get("hitl_type", "review"),
                     "hitl_id": user_response.get("hitl_id", ""),
+                    "selected_value": selected_value,
+                    "hitl_content": user_response.get("content", ""),
                 },
             )
             await db.commit()
@@ -559,8 +641,16 @@ async def _handle_hitl_resume(
             nonlocal agent_responses, reasoning_by_agent
             dtype = data.get("type", "")
 
-            # 先发送 WebSocket 消息
-            await websocket.send_json(data)
+            # 先发送 WebSocket 消息（保证实时性）
+            try:
+                await websocket.send_json(data)
+            except Exception:
+                try:
+                    from app.services.ws_broadcaster import broadcaster as _bcast
+                    if _bcast:
+                        await _bcast.broadcast_to_session(session_id, data)
+                except Exception:
+                    pass
 
             if dtype == "agent_message":
                 p = data.get("payload", {})
@@ -604,16 +694,18 @@ async def _handle_hitl_resume(
                     except Exception as e:
                         logger.warning(f"Failed to save agent message during resume: {e}")
 
-            elif dtype in ("hitl_request", "hitl_notification"):
+            elif dtype in ("hitl_request", "hitl_notification", "request_clarification"):
                 # 持久化 HITL 卡片数据，确保页面刷新后能重建 HITL 卡片
                 p = data.get("payload", {})
                 try:
+                    hitl_id = p.get("hitl_invoke_id") or str(uuid.uuid4())
                     hitl_msg = p.get("message", "")
                     combined = f"⚠️ **需要您的决策**\n\n{hitl_msg}"
                     meta = {
                         "role": "system",
                         "hitl_notification": True,
-                        "hitl_type": p.get("type", "confirmation"),
+                        "hitl_id": hitl_id,
+                        "hitl_type": p.get("type", p.get("mode", "confirmation")),
                         "hitl_message": hitl_msg,
                         "hitl_options": p.get("options", []),
                     }

@@ -415,10 +415,10 @@ INSERT INTO agents (id, name, default_model_id, persona_id, status, reviewed_cou
   ('1692749d-a00a-4f8e-b8ca-057fbe46ae11', '产品经理-Agent', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'plan_execute'),
   ('b2acb11b-b867-40cf-966b-c9be77684046', '架构师-Agent',    '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'self_consistency'),
   ('58f4721c-3fd4-484e-917e-57c1f382ccdf', '后端工程师-Agent', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'react'),
-  ('facc3a7c-6f4c-4d8e-82c1-79ec9d2983e3', '前端工程师-Agent', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'single_pass'),
+  ('facc3a7c-c310-4c30-88f7-325b83a8867c', '前端工程师-Agent', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'single_pass'),
   ('1af85ade-ce4d-4c1b-9f8d-e5afc0e46bde', '测试员-Agent',    '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'reflexion'),
   ('4bbc7f1a-50a1-4699-a4a3-050f30aba050', 'UI设计师-Agent',   '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'chain_of_thought'),
-  ('72b9e3fc-8a12-4a5b-9c31-d5a8f7e69140', '部署运维-Agent',  '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'rewoo')
+  ('008c5ac7-b5b4-44b0-8cf7-bc78ed8fd6b5', '部署运维-Agent',  '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 0, NOW(), NOW(), 'rewoo')
 ON CONFLICT (id) DO NOTHING;
 
 -- Team 种子数据（三种协作模式）
@@ -434,35 +434,34 @@ INSERT INTO team_members (id, team_id, agent_id, role_name, role_icon, capabilit
   (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', '1692749d-a00a-4f8e-b8ca-057fbe46ae11', 'PM', '📋', '{}', true, true, NOW()),
   (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', 'b2acb11b-b867-40cf-966b-c9be77684046', 'Architect', '🏗️', '{}', true, true, NOW()),
   (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', '58f4721c-3fd4-484e-917e-57c1f382ccdf', 'Backend', '💻', '{}', true, true, NOW()),
-  (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', 'facc3a7c-6f4c-4d8e-82c1-79ec9d2983e3', 'Frontend', '🌐', '{}', true, true, NOW()),
+  (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', 'facc3a7c-c310-4c30-88f7-325b83a8867c', 'Frontend', '🌐', '{}', true, true, NOW()),
   (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', '1af85ade-ce4d-4c1b-9f8d-e5afc0e46bde', 'QA', '🧪', '{}', true, true, NOW()),
   (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', '4bbc7f1a-50a1-4699-a4a3-050f30aba050', 'UI', '🎨', '{}', true, true, NOW()),
-  (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', '72b9e3fc-8a12-4a5b-9c31-d5a8f7e69140', 'DevOps', '🚀', '{}', true, true, NOW()),
+  (gen_random_uuid(), 'f4859cb3-d9c4-431d-b89b-33c048e3ec11', '008c5ac7-b5b4-44b0-8cf7-bc78ed8fd6b5', 'DevOps', '🚀', '{}', true, true, NOW()),
   -- Supervisor
   (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', '1692749d-a00a-4f8e-b8ca-057fbe46ae11', 'PM', '📋', '{}', true, true, NOW()),
   (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', 'b2acb11b-b867-40cf-966b-c9be77684046', 'Architect', '🏗️', '{}', true, true, NOW()),
   (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', '58f4721c-3fd4-484e-917e-57c1f382ccdf', 'Backend', '💻', '{}', true, true, NOW()),
-  (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', 'facc3a7c-6f4c-4d8e-82c1-79ec9d2983e3', 'Frontend', '🌐', '{}', true, true, NOW()),
+  (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', 'facc3a7c-c310-4c30-88f7-325b83a8867c', 'Frontend', '🌐', '{}', true, true, NOW()),
   (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', '1af85ade-ce4d-4c1b-9f8d-e5afc0e46bde', 'QA', '🧪', '{}', true, true, NOW()),
   (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', '4bbc7f1a-50a1-4699-a4a3-050f30aba050', 'UI', '🎨', '{}', true, true, NOW()),
-  (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', '72b9e3fc-8a12-4a5b-9c31-d5a8f7e69140', 'DevOps', '🚀', '{}', true, true, NOW()),
+  (gen_random_uuid(), '4948c302-365f-47aa-84cb-6fceb0138952', '008c5ac7-b5b4-44b0-8cf7-bc78ed8fd6b5', 'DevOps', '🚀', '{}', true, true, NOW()),
   -- LangGraph
   (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', '1692749d-a00a-4f8e-b8ca-057fbe46ae11', 'PM', '📋', '{}', true, true, NOW()),
   (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', 'b2acb11b-b867-40cf-966b-c9be77684046', 'Architect', '🏗️', '{}', true, true, NOW()),
   (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', '58f4721c-3fd4-484e-917e-57c1f382ccdf', 'Backend', '💻', '{}', true, true, NOW()),
-  (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', 'facc3a7c-6f4c-4d8e-82c1-79ec9d2983e3', 'Frontend', '🌐', '{}', true, true, NOW()),
+  (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', 'facc3a7c-c310-4c30-88f7-325b83a8867c', 'Frontend', '🌐', '{}', true, true, NOW()),
   (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', '1af85ade-ce4d-4c1b-9f8d-e5afc0e46bde', 'QA', '🧪', '{}', true, true, NOW()),
   (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', '4bbc7f1a-50a1-4699-a4a3-050f30aba050', 'UI', '🎨', '{}', true, true, NOW()),
-  (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', '72b9e3fc-8a12-4a5b-9c31-d5a8f7e69140', 'DevOps', '🚀', '{}', true, true, NOW());
+  (gen_random_uuid(), '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', '008c5ac7-b5b4-44b0-8cf7-bc78ed8fd6b5', 'DevOps', '🚀', '{}', true, true, NOW());
 
 -- ════════════════ LangGraph 工作流数据 ════════════════
 
--- Workflow（二分查找开发流程）
+-- Workflow 1: 简单流程（保留兼容）
 INSERT INTO workflows (id, name, description, definition, version, is_template, status, created_at, updated_at) VALUES
   ('fa9ffe78-d7aa-451b-b221-a7f252f47a38', '二分查找开发流程', 'Python二分查找函数的开发与测试流程', '{}', 1, false, 'active', NOW(), NOW())
 ON CONFLICT (id) DO NOTHING;
 
--- Workflow 节点
 INSERT INTO workflow_nodes (id, workflow_id, node_key, label, type, position_x, position_y, config, created_at) VALUES
   ('37200434-d091-4c90-a9b0-9e5437362cf1', 'fa9ffe78-d7aa-451b-b221-a7f252f47a38', 'start', '开始', 'start', 250, 50, '{}', NOW()),
   ('21054c17-f4f1-4686-a1ee-72898d9ea812', 'fa9ffe78-d7aa-451b-b221-a7f252f47a38', 'dev', '编写代码', 'task', 250, 150, '{}', NOW()),
@@ -470,19 +469,134 @@ INSERT INTO workflow_nodes (id, workflow_id, node_key, label, type, position_x, 
   ('53951d3d-26cc-4479-8be3-d76b5bea9d08', 'fa9ffe78-d7aa-451b-b221-a7f252f47a38', 'end', '结束', 'end', 250, 350, '{}', NOW())
 ON CONFLICT (id) DO NOTHING;
 
--- Workflow 边
 INSERT INTO workflow_edges (id, workflow_id, source_id, target_id, type, created_at) VALUES
   (gen_random_uuid(), 'fa9ffe78-d7aa-451b-b221-a7f252f47a38', '37200434-d091-4c90-a9b0-9e5437362cf1', '21054c17-f4f1-4686-a1ee-72898d9ea812', 'forward', NOW()),
   (gen_random_uuid(), 'fa9ffe78-d7aa-451b-b221-a7f252f47a38', '21054c17-f4f1-4686-a1ee-72898d9ea812', '2e296607-23a7-43aa-9a82-efa98d23f8a5', 'forward', NOW()),
   (gen_random_uuid(), 'fa9ffe78-d7aa-451b-b221-a7f252f47a38', '2e296607-23a7-43aa-9a82-efa98d23f8a5', '53951d3d-26cc-4479-8be3-d76b5bea9d08', 'forward', NOW())
 ON CONFLICT DO NOTHING;
 
--- Team LangGraph 配置（绑定）
-INSERT INTO team_langgraph_configs (id, team_id, workflow_id, created_at) VALUES
-  ('710fc2a1-b6c5-4192-8b01-53787106e5ec', '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', 'fa9ffe78-d7aa-451b-b221-a7f252f47a38', NOW())
-ON CONFLICT (team_id) DO UPDATE SET workflow_id = 'fa9ffe78-d7aa-451b-b221-a7f252f47a38';
+-- ════════════════ Workflow 2: 软件功能开发全流程（含人工审核打回） ════════════════
+-- 15节点 · 20边 · 3道人工审核关卡 · 5条打回路径（含并行打回）
 
--- Node → Agent 绑定
+INSERT INTO workflows (id, name, description, definition, version, is_template, status, created_at, updated_at) VALUES
+  ('62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '软件功能开发全流程（含人工审核打回）',
+   '完整软件功能开发流程，包含3道人工审核关卡和4条打回路径。需求评审→方案评审→代码评审，每道关卡可打回重做。',
+   '{}', 1, false, 'active', NOW(), NOW())
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
+
+-- 15个节点：2个标记(start/end) + 5个agent + 3个hitl + 3个condition + 1个validation
+INSERT INTO workflow_nodes (id, workflow_id, node_key, label, type, position_x, position_y, config, created_at) VALUES
+  -- 开始/结束
+  ('20ddfd33-2ba9-47ed-bf7c-0924ec2425bf', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'start', '🚀 开始', 'start', 250, 20, '{}', NOW()),
+  ('811aa1f0-f99e-4792-92ca-791d6ba38b96', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'end', '✅ 完成', 'end', 250, 1220, '{}', NOW()),
+
+  -- 阶段1: 需求分析 → 需求评审(HITL关卡1)
+  ('894ff415-f485-4a16-89f3-004ba9a35a33', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'requirement_analysis',
+   '📋 需求分析', 'agent', 250, 120,
+   '{"instruction": "分析用户需求，输出结构化需求文档（功能描述、验收标准、优先级）。作为产品经理，请仔细分析并输出完整的需求文档。", "timeout": 600}', NOW()),
+
+  ('476f2f3b-4da0-4436-bc68-b5daa8fea616', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'requirement_review',
+   '👀 需求评审（人工审核）', 'hitl', 460, 210,
+   '{"instruction": "【审核关卡1】请审核需求文档是否完整、合理。\n\n请回复：\n✅ 通过 — 需求清晰，可以进入方案设计\n❌ 打回 — 需求不明确，需要重新分析\n💬 有条件通过 — 指出需要补充的内容后继续", "timeout": 1200}', NOW()),
+
+  ('21fd1bab-0293-47b1-ba4b-c5ca91aab31e', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'requirement_review_check',
+   '🔀 需求评审结果', 'condition', 460, 310,
+   '{"expression": "contains:✅", "on_true_node_key": "solution_design", "on_false_node_key": "requirement_analysis"}', NOW()),
+
+  -- 阶段2: 方案设计 → 方案评审(HITL关卡2)
+  ('0379a95f-cd70-4424-ae7b-684eb3ec02f8', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'solution_design',
+   '🏗️ 方案设计', 'agent', 250, 320,
+   '{"instruction": "基于需求文档设计技术方案。请输出：1) 架构设计 2) 模块划分 3) 接口定义 4) 数据模型 5) 技术选型理由。", "timeout": 900}', NOW()),
+
+  ('0a6ae93d-8e47-4643-a873-9d7ed7071834', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'solution_review',
+   '👀 方案评审（人工审核）', 'hitl', 460, 410,
+   '{"instruction": "【审核关卡2】请审核技术方案是否合理可行。\n\n请回复：\n✅ 通过 — 方案可行，可以进入开发阶段\n❌ 打回 — 方案有问题，需要重新设计\n💬 有条件通过 — 指出注意要点后继续", "timeout": 1200}', NOW()),
+
+  ('b1ec772c-dd90-48d5-b13f-fc98f633d505', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'solution_review_check',
+   '🔀 方案评审结果', 'condition', 460, 510,
+   '{"expression": "contains:✅", "on_true_node_key": "backend_dev", "on_false_node_key": "solution_design"}', NOW()),
+
+  -- 阶段3: 并行开发(后端+前端) → 代码评审(HITL关卡3)
+  ('8a8bedf0-80f2-43c2-a7bd-fe359845130a', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'backend_dev',
+   '💻 后端开发', 'agent', 120, 600,
+   '{"instruction": "根据技术方案实现后端代码。包括：API endpoint、Service层、数据访问层、单元测试。输出完整可运行的代码。", "timeout": 1200}', NOW()),
+
+  ('990fa328-f03f-4d74-83a4-00008d6b7962', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'frontend_dev',
+   '🌐 前端开发', 'agent', 380, 600,
+   '{"instruction": "根据技术方案实现前端页面。包括：页面组件、状态管理、API对接、样式。输出完整可运行的代码。", "timeout": 1200}', NOW()),
+
+  ('8f5a033f-6954-4d56-982d-9ed766571729', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'code_review',
+   '👀 代码评审（人工审核）', 'hitl', 460, 700,
+   '{"instruction": "【审核关卡3】请审核后端和前端代码质量。\n\n请回复：\n✅ 通过 — 代码质量合格，进入测试阶段\n❌ 打回 — 代码有问题，需要重新开发\n💬 有条件通过 — 指出需要修复的问题后继续", "timeout": 1200}', NOW()),
+
+  ('be46d2d9-e8c8-43cc-b004-88be89cbb2e8', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'code_review_check',
+   '🔀 代码评审结果', 'router', 460, 800,
+   '{"strategy": "llm_select", "candidates": ["backend_dev", "frontend_dev", "integration_test"], "fallback_node_key": "integration_test"}', NOW()),
+
+  -- 阶段4: 测试 → 自动校验 → 部署
+  ('7a409814-4b39-4711-aed5-fd23c5aaef12', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'integration_test',
+   '🧪 集成测试', 'agent', 250, 900,
+   '{"instruction": "对前后端代码进行集成测试。输出：1) 测试用例 2) 执行结果 3) Bug列表 4) 覆盖率报告。", "timeout": 1200}', NOW()),
+
+  ('3857ea25-cfa8-47f9-9510-72bf55c7ce3d', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'test_validation',
+   '✅ 测试校验（自动）', 'validation', 250, 1000,
+   '{"validator": "test_pass", "criteria": "所有测试必须通过，无FAILED/FAILURES/AssertionError", "on_fail": "reject", "max_retries": 2}', NOW()),
+
+  ('223ad2a1-8954-42f5-a82c-1945e2f2b9eb', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'deploy',
+   '🚀 部署发布', 'agent', 250, 1120,
+   '{"instruction": "将通过测试的代码部署到生产环境。输出：1) 部署步骤 2) 配置变更 3) 回滚预案 4) 监控配置。", "timeout": 600}', NOW())
+ON CONFLICT (id) DO NOTHING;
+
+-- 19条边：15条Forward + 4条Reject（打回路径）
+INSERT INTO workflow_edges (id, workflow_id, source_id, target_id, type, created_at) VALUES
+  -- === Forward 边（正向流程） ===
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '20ddfd33-2ba9-47ed-bf7c-0924ec2425bf', '894ff415-f485-4a16-89f3-004ba9a35a33', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '894ff415-f485-4a16-89f3-004ba9a35a33', '476f2f3b-4da0-4436-bc68-b5daa8fea616', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '476f2f3b-4da0-4436-bc68-b5daa8fea616', '21fd1bab-0293-47b1-ba4b-c5ca91aab31e', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '21fd1bab-0293-47b1-ba4b-c5ca91aab31e', '0379a95f-cd70-4424-ae7b-684eb3ec02f8', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '0379a95f-cd70-4424-ae7b-684eb3ec02f8', '0a6ae93d-8e47-4643-a873-9d7ed7071834', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '0a6ae93d-8e47-4643-a873-9d7ed7071834', 'b1ec772c-dd90-48d5-b13f-fc98f633d505', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'b1ec772c-dd90-48d5-b13f-fc98f633d505', '8a8bedf0-80f2-43c2-a7bd-fe359845130a', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'b1ec772c-dd90-48d5-b13f-fc98f633d505', '990fa328-f03f-4d74-83a4-00008d6b7962', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '8a8bedf0-80f2-43c2-a7bd-fe359845130a', '8f5a033f-6954-4d56-982d-9ed766571729', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '990fa328-f03f-4d74-83a4-00008d6b7962', '8f5a033f-6954-4d56-982d-9ed766571729', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '8f5a033f-6954-4d56-982d-9ed766571729', 'be46d2d9-e8c8-43cc-b004-88be89cbb2e8', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'be46d2d9-e8c8-43cc-b004-88be89cbb2e8', '7a409814-4b39-4711-aed5-fd23c5aaef12', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '7a409814-4b39-4711-aed5-fd23c5aaef12', '3857ea25-cfa8-47f9-9510-72bf55c7ce3d', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '3857ea25-cfa8-47f9-9510-72bf55c7ce3d', '223ad2a1-8954-42f5-a82c-1945e2f2b9eb', 'forward', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '223ad2a1-8954-42f5-a82c-1945e2f2b9eb', '811aa1f0-f99e-4792-92ca-791d6ba38b96', 'forward', NOW()),
+
+  -- === Reject 边（打回路径，红色虚线） ===
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '21fd1bab-0293-47b1-ba4b-c5ca91aab31e', '894ff415-f485-4a16-89f3-004ba9a35a33', 'reject', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'b1ec772c-dd90-48d5-b13f-fc98f633d505', '0379a95f-cd70-4424-ae7b-684eb3ec02f8', 'reject', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', 'be46d2d9-e8c8-43cc-b004-88be89cbb2e8', '8a8bedf0-80f2-43c2-a7bd-fe359845130a', 'reject', NOW()),
+  (gen_random_uuid(), '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', '3857ea25-cfa8-47f9-9510-72bf55c7ce3d', '8a8bedf0-80f2-43c2-a7bd-fe359845130a', 'reject', NOW())
+ON CONFLICT DO NOTHING;
+
+-- ════════════════ Team LangGraph 配置 ════════════════
+
+-- 工作流验证团队 绑定新的复杂流程
+INSERT INTO team_langgraph_configs (id, team_id, workflow_id, created_at) VALUES
+  ('710fc2a1-b6c5-4192-8b01-53787106e5ec', '45cb97fa-f1c9-4063-b9a7-a6bc32971cbf', '62cf6b2b-26b7-4ddd-9454-5100b2dc6750', NOW())
+ON CONFLICT (team_id) DO UPDATE SET workflow_id = '62cf6b2b-26b7-4ddd-9454-5100b2dc6750';
+
+-- Node → Agent 绑定（12个可执行节点绑定到对应Agent）
+INSERT INTO team_langgraph_node_bindings (id, config_id, node_key, agent_id, created_at) VALUES
+  -- 需求分析 → 产品经理
+  (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'requirement_analysis', '1692749d-a00a-4f8e-b8ca-057fbe46ae11', NOW()),
+  -- 方案设计 → 架构师
+  (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'solution_design', 'b2acb11b-b867-40cf-966b-c9be77684046', NOW()),
+  -- 后端开发 → 后端工程师
+  (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'backend_dev', '58f4721c-3fd4-484e-917e-57c1f382ccdf', NOW()),
+  -- 前端开发 → 前端工程师
+  (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'frontend_dev', 'facc3a7c-c310-4c30-88f7-325b83a8867c', NOW()),
+  -- 集成测试 → 测试员
+  (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'integration_test', '1af85ade-ce4d-4c1b-9f8d-e5afc0e46bde', NOW()),
+  -- 部署发布 → 运维
+  (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'deploy', '008c5ac7-b5b4-44b0-8cf7-bc78ed8fd6b5', NOW())
+ON CONFLICT DO NOTHING;
+
+-- 简单流程的绑定保留（兼容）
 INSERT INTO team_langgraph_node_bindings (id, config_id, node_key, agent_id, created_at) VALUES
   (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'dev', '58f4721c-3fd4-484e-917e-57c1f382ccdf', NOW()),
   (gen_random_uuid(), '710fc2a1-b6c5-4192-8b01-53787106e5ec', 'test', '1af85ade-ce4d-4c1b-9f8d-e5afc0e46bde', NOW())

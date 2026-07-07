@@ -23,7 +23,7 @@ import type {
   ThinkingAgent,
   PendingInterrupt,
 } from '../types/state';
-import { makeInitialChatRoomState } from '../types/state';
+import { makeInitialChatRoomState, type WorkTaskStatus } from '../types/state';
 import type { ChatRoomAction } from './actions';
 import {
   makeId,
@@ -95,15 +95,58 @@ export function chatRoomReducer(
       return { ...state, wsConnected: action.connected };
     }
 
+    case 'CTRL/HISTORY_REFRESH': {
+      // 重连轮询用：递增版本号触发 useSessionHistory 重载
+      return { ...state, historyVersion: (state.historyVersion || 0) + 1 };
+    }
+
     case 'CTRL/HISTORY_LOADED': {
-      // 历史加载：合并已有消息（WS 可能先于历史加载创建了 HITL 卡片），去重 HITL
+      // 历史加载：去重 HITL 卡片（相同 hitlId 只保留 answered > pending）
       const existingHitlIds = new Set(
         state.messages.filter(m => m.kind === 'hitl_card').map(m => (m as HitlCardItem).hitlId)
       );
-      const filteredHistory = action.messages.filter(m => {
-        if (m.kind !== 'hitl_card') return true;
-        return !existingHitlIds.has((m as HitlCardItem).hitlId);
-      });
+      // 对历史消息中的 HITL 卡片，按 hitlId 去重，answered 优先，合并通知+回答数据
+      const hitlBest = new Map<string, TimelineItem>();
+      for (const m of action.messages) {
+        if (m.kind === 'hitl_card') {
+          const h = m as HitlCardItem;
+          const cur = hitlBest.get(h.hitlId);
+          if (!cur) {
+            hitlBest.set(h.hitlId, m);
+          } else if (h.cardState === 'answered' && (cur as HitlCardItem).cardState !== 'answered') {
+            // 用已回答版本，但保留通知中的 message 和 options
+            const curPending = cur as HitlCardItem;
+            const merged: HitlCardItem = {
+              ...h,
+              message: curPending.message || h.message,  // 通知的消息优先
+              options: curPending.options?.length ? curPending.options : h.options, // 通知的选项优先
+            };
+            hitlBest.set(h.hitlId, merged);
+          } else if ((cur as HitlCardItem).cardState === 'answered' && h.cardState !== 'answered') {
+            // 当前是已回答版本，新来的是通知 → 保留已回答版本但补充通知数据
+            const curAnswered = cur as HitlCardItem;
+            if (!curAnswered.message || curAnswered.message === curAnswered.answer) {
+              const merged: HitlCardItem = {
+                ...curAnswered,
+                message: h.message || curAnswered.message,
+                options: h.options?.length ? h.options : curAnswered.options,
+              };
+              hitlBest.set(h.hitlId, merged);
+            }
+          }
+        }
+      }
+      // 替换：每个 hitlId 用最佳版本替代（合并后的对象）
+      const seenHitlIds = new Set<string>();
+      const filteredHistory = action.messages.map(m => {
+        if (m.kind !== 'hitl_card') return m;
+        const h = m as HitlCardItem;
+        if (existingHitlIds.has(h.hitlId)) return null;
+        if (seenHitlIds.has(h.hitlId)) return null;
+        seenHitlIds.add(h.hitlId);
+        // 返回合并后的最佳版本
+        return hitlBest.get(h.hitlId) || m;
+      }).filter(Boolean) as TimelineItem[];
       const next: ReducerState = { ...state, messages: [...state.messages, ...filteredHistory] };
       if (action.workPlan !== undefined) {
         next.workPlan = action.workPlan;
@@ -550,11 +593,14 @@ export function chatRoomReducer(
       if (!task) return state;
 
       const now = nowFromAction(state);
-      const newStatus =
+      const newStatus: WorkTaskStatus =
         p.status === 'pending' ? 'pending'
         : p.status === 'running' ? 'running'
         : p.status === 'done' ? 'done'
         : p.status === 'failed' ? 'failed'
+        : p.status === 'rejected' ? 'rejected'
+        : p.status === 'rollback' ? 'rollback'
+        : p.status === 'skipped' ? 'skipped'
         : 'retrying';
 
       const updatedTask: WorkPlan['tasks'][string] = {
@@ -817,10 +863,12 @@ export function chatRoomReducer(
         ...state.pendingHitl,
         cardState: 'answered' as const,
         answer: action.answer,
+        selectedValue: action.selectedValue,
       };
       const newMessages = patchHitlCard(state.messages, action.hitlId, {
         cardState: 'answered',
         answer: action.answer,
+        selectedValue: action.selectedValue,
       });
       return {
         ...state,

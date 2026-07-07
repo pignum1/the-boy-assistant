@@ -34,7 +34,7 @@ export function ChatRoomView({ sessionId, teamId }: Props) {
   const ws = useWsEvents({ sessionId, dispatch });
   const teamMembers = useTeamMembers(teamId);
   const collabMode = useTeamMode(teamId) || 'supervisor';
-  useSessionHistory(sessionId, dispatch, state.messages.length);
+  useSessionHistory(sessionId, dispatch, state.messages.length, state.historyVersion);
   const inputRef = useRef<ChatInputHandle>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -83,12 +83,16 @@ export function ChatRoomView({ sessionId, teamId }: Props) {
   }, [dispatch, ws]);
 
   const handleHitlPrimary = useCallback((hitlId: string, value: string) => {
+    // 用于本地显示的 answer 文本
     let answer = value;
-    if (value === 'approve') answer = '确认';
-    else if (value === 'reject') answer = '不对，重新来';
-    else if (value === 'skip' || value === 'cancel') answer = '取消';
-    dispatch({ type: 'UI/HITL_ANSWER', hitlId, answer });
-    ws.sendHitlResume(answer);
+    if (value === 'approve') answer = '✅ 审核通过，继续执行';
+    else if (value === 'reject') answer = '❌ 打回重新修改';
+    else if (value === 'reject_all') answer = '🔄 全部打回，后端和前端均需修改';
+    else if (value === 'skip' || value === 'cancel') answer = '⏹ 取消';
+    else if (value === 'abort') answer = '⏹ 终止流程';
+    dispatch({ type: 'UI/HITL_ANSWER', hitlId, answer, selectedValue: value });
+    // 发送原始 value 给后端（approve/reject），后端负责生成 content
+    ws.sendHitlResume(value);
   }, [dispatch, ws]);
 
   const handleHitlEnterAnswering = useCallback((hitlId: string) => {

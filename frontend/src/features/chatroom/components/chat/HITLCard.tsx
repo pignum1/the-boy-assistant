@@ -49,8 +49,8 @@ const BORDER: Record<HitlCardItem['hitlKind'], string> = {
   delta_plan:    'var(--gold-border)',
 };
 
-/** 自由输入型选项的值 → 点击后进入 answering 模式，不发消息 */
-const ANSWER_ENTRY_VALUES = ['answer', 'modify', 'edit'];
+/** 自由输入型选项的值 → 点击后进入 answering 模式，发消息前可输入反馈 */
+const ANSWER_ENTRY_VALUES = ['answer', 'modify', 'edit', 'reject', 'reject_all'];
 
 export function HITLCard({ item, onPrimaryAction, onEnterAnswering }: Props) {
   const color = COLOR[item.hitlKind];
@@ -83,9 +83,20 @@ export function HITLCard({ item, onPrimaryAction, onEnterAnswering }: Props) {
         <span style={{
           fontSize: 12,
           fontWeight: 600,
-          color,
+          color: item.cardState === 'answered'
+            ? (item.selectedValue === 'approve' ? 'var(--green-500)' :
+               item.selectedValue === 'reject' ? '#ef4444' :
+               item.selectedValue === 'skip' || item.selectedValue === 'cancel' || item.selectedValue === 'abort' ? 'var(--text-muted)' :
+               color)
+            : color,
         }}>
-          {TITLES[item.hitlKind] ?? '确认'}
+          {item.cardState === 'answered'
+            ? (item.selectedValue === 'approve' ? '✅ 已通过' :
+               item.selectedValue === 'reject' ? '❌ 已打回' :
+               item.selectedValue === 'skip' || item.selectedValue === 'cancel' ? '⏹ 已取消' :
+               item.selectedValue === 'abort' ? '⏹ 已终止' :
+               '📝 已回复')
+            : (TITLES[item.hitlKind] ?? '确认')}
         </span>
         <StateBadge state={item.cardState} color={color} />
       </div>
@@ -214,7 +225,8 @@ function DeltaPlanSummary({ plan }: { plan: NonNullable<HitlCardItem['deltaPlan'
 
 /** 简单 markdown-ish 渲染（**bold** + 换行） */
 function renderMessage(text: string): string {
-  return text
+  const safe = typeof text === 'string' ? text : String(text || '');
+  return safe
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

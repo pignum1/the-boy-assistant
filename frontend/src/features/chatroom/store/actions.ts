@@ -65,7 +65,7 @@ export type UiAction =
   // 用户点击 HITL「取消回答」(退回 pending)
   | { type: 'UI/HITL_EXIT_ANSWERING'; hitlId: string }
   // 用户回答 HITL（通过输入框 / 按钮）
-  | { type: 'UI/HITL_ANSWER'; hitlId: string; answer: string }
+  | { type: 'UI/HITL_ANSWER'; hitlId: string; answer: string; selectedValue?: string }
   // 打开/关闭抽屉
   | { type: 'UI/TOGGLE_DRAWER'; drawer: DrawerKind | null }
   // 调整抽屉宽度
@@ -82,6 +82,7 @@ export type CtrlAction =
   | { type: 'CTRL/INIT_SESSION'; sessionId: string }
   // WS 连接状态
   | { type: 'CTRL/WS_CONNECTED'; connected: boolean }
+  | { type: 'CTRL/HISTORY_REFRESH' }
   // 历史消息加载完成（可同时携带派生的 workPlan / artifacts，避免 reload 后抽屉为空）
   | {
       type: 'CTRL/HISTORY_LOADED';

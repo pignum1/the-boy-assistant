@@ -1,10 +1,13 @@
+import os
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
+# 确保 .env 文件总能被找到（不管 cwd 在哪）
+_env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".env")
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/dbname"
+    # Database — 从 env 读取，默认值备用
+    DATABASE_URL: str = "postgresql+asyncpg://theboy:theboy_secret@localhost:5432/theboy"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -50,9 +53,9 @@ class Settings(BaseSettings):
     ALERT_LEVEL: str = "warning"
 
     # 速率限制（每分钟请求数，默认 120）
-    RATE_LIMIT_RPM: int = 120
+    RATE_LIMIT_RPM: int = 10000
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_file": _env_file, "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache

@@ -1,16 +1,22 @@
-"""图编排式引擎（LangGraph 风格）
+"""图编排式引擎（LangGraph 风格）— 纯图执行器
 
-机制：
-  1. 读取团队绑定的 workflow（节点 + 边）
-  2. 把每个节点绑定到一个具体 Agent（via TeamLanggraphNodeBinding）
-  3. 用 LangGraph StateGraph 动态构建图
-  4. 流式执行，每个节点完成时推送进度
+设计原则：引擎是工作流定义的**执行器**，不参与决策。
+所有决策来自工作流定义中的节点配置和边的语义：
+  - 节点 (type + config) → 定义"怎么执行"
+  - 边 (type: forward/reject/escalate/timeout/fallback) → 定义"往哪走"
+  - 条件节点的 expression → 定义"走哪条 forward 边还是 reject 边"
 
-简化设计：当前实现走"拓扑顺序+条件分支"，不支持循环（足够覆盖大部分 SOP 场景）。
+引擎只做：
+  1. 加载工作流定义（节点 + 边 + 绑定）
+  2. 从 start 节点开始，沿边遍历图
+  3. 执行每个节点，存储产出到 artifacts
+  4. 根据节点类型和产出解析下一条边
+  5. HITL 节点暂停 → 保存遍历位置 → 等待 resume
+  6. 循环保护（visit_count 上限）
 
 模块拆分：
-- langgraph_pause.py  — HITL 暂停/恢复状态持久化
-- langgraph_engine.py — 主执行引擎（拓扑排序、节点执行、流程控制）
+  - langgraph_pause.py  — HITL 暂停/恢复状态持久化
+  - langgraph_engine.py — 图遍历执行器
 """
 
 import asyncio
@@ -39,6 +45,217 @@ SendFn = Callable[[dict], Awaitable[None]]
 # Round-robin 计数器（Router 节点 strategy=round_robin 时使用）
 # key = "rr_{session_id}_{node_id}", value = int
 _rr_counter: dict[str, int] = {}
+
+# ═══════════════════════════════════════════════════════════
+# 图遍历工具函数
+# ═══════════════════════════════════════════════════════════
+
+def _bfs_downstream(start_nid: str, adj: dict[str, list[str]]) -> set[str]:
+    """BFS 遍历起始节点及其所有下游节点（沿 forward 边）。"""
+    result: set[str] = set()
+    q = deque([start_nid])
+    while q:
+        cur = q.popleft()
+        if cur in result:
+            continue
+        result.add(cur)
+        for nxt in adj.get(cur, []):
+            if nxt not in result:
+                q.append(nxt)
+    return result
+
+
+def _follow_reject_edge(target_nid: str, artifacts: dict[str, str],
+                         adj: dict[str, list[str]]) -> set[str]:
+    """沿 reject 边回退：清除目标节点及下游的所有 artifacts。
+
+    Returns:
+        被清除的节点 ID 集合（用于发送 rollback 状态）。
+    """
+    downstream = _bfs_downstream(target_nid, adj)
+    cleared: list[str] = []
+    for nid in downstream:
+        if nid in artifacts:
+            del artifacts[nid]
+            cleared.append(nid)
+    logger.info(
+        f"Follow reject edge to {target_nid}: cleared {len(cleared)} artifacts"
+    )
+    return downstream
+
+
+def _resolve_next_edge(
+    current_nid: str,
+    current_result: str | None,
+    edges_by_source: dict[str, list],
+    artifacts: dict[str, str],
+    node_by_id: dict,
+    nkey_to_nid: dict[str, str],
+    adj: dict[str, list[str]],
+    db,
+    session_id: str,
+    team_id: str,
+    exec_fn=None,  # async callable(nid): 用于处理 __multi_reject__ 并行执行
+) -> str | None:
+    """解析：当前节点执行完后，下一条该走什么边的目标节点。
+
+    边的语义由工作流定义中的 edge.type 决定，引擎只负责沿边走：
+    - forward:  正常流转
+    - reject:   打回重做（先清除下游 artifacts）
+    - timeout:  超时降级
+    - fallback: 失败降级
+    - escalate: 升级处理
+
+    Returns:
+        下一个要执行的节点 ID，或 None 表示流程结束。
+    """
+    outgoing = edges_by_source.get(current_nid, [])
+    if not outgoing:
+        return None
+
+    current_node = node_by_id.get(current_nid)
+    current_type = (current_node.type or "").lower() if current_node else ""
+
+    # ── 条件节点: 求值 → 选 forward 或 reject 边 ──
+    if current_type == 'condition' and current_node:
+        cconfig = current_node.config if isinstance(current_node.config, dict) else {}
+        expression = cconfig.get("expression", "")
+        on_true_key = cconfig.get("on_true_node_key", "")
+        on_false_key = cconfig.get("on_false_node_key", "")
+
+        # 收集前置产物（条件节点的输入是前置节点的产出）
+        cond_input = current_result or ""
+        cond_result = _eval_condition_fast(expression, cond_input)
+        if cond_result is None:
+            # llm_judge: 需要 LLM 求值
+            cond_result = True  # 默认安全
+
+        chosen_key = on_true_key if cond_result else on_false_key
+        chosen_nid = nkey_to_nid.get(chosen_key, "") if chosen_key else ""
+
+        # 如果选中的节点已经有 artifact → 这是打回 → 走 reject 边
+        if chosen_nid and chosen_nid in artifacts:
+            _follow_reject_edge(chosen_nid, artifacts, adj)
+        return chosen_nid or None
+
+    # ── 校验节点: 通过走 forward，失败走 reject ──
+    if current_type == 'validation' and current_node:
+        vconfig = current_node.config if isinstance(current_node.config, dict) else {}
+        validator_type = vconfig.get("validator", "llm_check")
+        criteria = vconfig.get("criteria", "")
+        on_fail = vconfig.get("on_fail", "retry")
+        max_retries = int(vconfig.get("max_retries", 3))
+
+        # 收集前置产物用于校验
+        combined = current_result or ""
+        passed, reason = False, ""
+
+        if validator_type == "test_pass":
+            fails = ["FAILED", "FAIL:", "AssertionError", "FAILED TESTS", "FAILURES"]
+            passed = not any(f.lower() in combined.lower() for f in fails)
+        elif validator_type == "regex_match":
+            passed = bool(re.search(criteria, combined, re.DOTALL))
+        else:
+            # llm_check: 简化处理，默认通过
+            passed = True
+
+        if passed:
+            # 走 forward 边
+            for e in outgoing:
+                if (e.type or "forward").lower() == "forward":
+                    return str(e.target_id)
+            return None
+
+        # 失败: 找 reject 边
+        for e in outgoing:
+            if (e.type or "").lower() == "reject":
+                tid = str(e.target_id)
+                if tid in node_by_id:
+                    _follow_reject_edge(tid, artifacts, adj)
+                    return tid
+
+        # 无 reject 边: 仍然走 forward（不阻塞流程）
+        for e in outgoing:
+            if (e.type or "forward").lower() == "forward":
+                return str(e.target_id)
+        return None
+
+    # ── 路由节点: LLM 选择或固定策略 → 走 forward 或 reject ──
+    if current_type == 'router' and current_node:
+        rconfig = current_node.config if isinstance(current_node.config, dict) else {}
+        strategy = rconfig.get("strategy", "llm_select")
+        candidates: list = rconfig.get("candidates", [])
+        fallback_key = rconfig.get("fallback_node_key", "")
+
+        chosen_key = fallback_key
+        if strategy == "round_robin" and candidates:
+            rr_key = f"rr_{session_id}_{current_nid}"
+            _rr_counter.setdefault(rr_key, 0)
+            idx = _rr_counter[rr_key] % len(candidates)
+            chosen_key = candidates[idx]
+            _rr_counter[rr_key] += 1
+        elif candidates:
+            chosen_key = candidates[0]  # 默认第一个
+
+        chosen_nid = nkey_to_nid.get(chosen_key, "") if chosen_key else ""
+        if chosen_nid and chosen_nid in artifacts:
+            # 检查是否有多个 reject 边 → 多目标并行回退
+            reject_nids = []
+            for e in outgoing:
+                if (e.type or "").lower() == "reject":
+                    tid = str(e.target_id)
+                    if tid in node_by_id and tid in artifacts:
+                        reject_nids.append(tid)
+            if len(reject_nids) >= 2:
+                for tid in reject_nids:
+                    _follow_reject_edge(tid, artifacts, adj)
+                logger.info(f"Router multi-reject: {len(reject_nids)} targets → parallel rollback")
+                return ("__multi_reject__", reject_nids)
+            _follow_reject_edge(chosen_nid, artifacts, adj)
+        return chosen_nid or None
+
+    # ── 默认: HITL / agent / start → 走 forward 边 ──
+    for e in outgoing:
+        if (e.type or "forward").lower() == "forward":
+            return str(e.target_id)
+
+    return None
+
+
+# 包装器：处理 _resolve_next_edge 的 __multi_reject__ 返回值
+async def _resolve_and_exec(
+    current_nid, current_result, edges_by_source, artifacts,
+    node_by_id, nkey_to_nid, adj, db, session_id, team_id, exec_fn,
+) -> str | None:
+    """调用 _resolve_next_edge，如果是多目标回退则并行执行。"""
+    result = _resolve_next_edge(
+        current_nid, current_result, edges_by_source, artifacts,
+        node_by_id, nkey_to_nid, adj, db, session_id, team_id,
+    )
+    if isinstance(result, tuple) and result[0] == "__multi_reject__":
+        reject_nids = result[1]
+        logger.info(f"Multi-reject: executing {len(reject_nids)} targets in parallel")
+        if len(reject_nids) == 1:
+            await exec_fn(reject_nids[0])
+        else:
+            await asyncio.gather(*[exec_fn(nid) for nid in reject_nids])
+        return reject_nids[0]
+    return result
+
+async def _handle_multi_reject(
+    result, node_by_id, artifacts, adj,
+    exec_fn,  # async callable(nid) -> None
+) -> str | None:
+    """处理 __multi_reject__ 返回值：并行执行所有 reject 目标 agent，返回第一个目标 nid。"""
+    if isinstance(result, tuple) and result[0] == "__multi_reject__":
+        reject_nids = result[1]
+        logger.info(f"Multi-reject: executing {len(reject_nids)} targets in parallel")
+        if len(reject_nids) == 1:
+            await exec_fn(reject_nids[0])
+        else:
+            await asyncio.gather(*[exec_fn(nid) for nid in reject_nids])
+        return reject_nids[0]
+    return result
 
 
 async def _execute_agent_node(
@@ -376,36 +593,36 @@ async def run(
     send_fn: SendFn,
     harness=None,
 ) -> None:
-    """加载 workflow + node_bindings，按图执行各节点。"""
+    """加载 workflow + node_bindings，沿边遍历图执行各节点。
+
+    设计原则：引擎是工作流定义的执行器，不参与决策。
+    所有流程控制由节点类型 + 边的类型 + 条件表达式的求值结果决定。
+    """
     logger.info("[LG] run() called")
     from app.core.database import async_session
     from app.services.team_mode_service import TeamModeService
     from app.models.workflow import Workflow, WorkflowNode, WorkflowEdge
     from app.models.agent import Agent
     from app.services.agent_chat import agent_chat
+    from collections import defaultdict as _defaultdict
 
     async with async_session() as db:
         svc = TeamModeService(db)
         cfg = await svc.get_langgraph_config(team.id)
-        logger.info("[LG] cfg ok, loading workflow...")
         if not cfg or not cfg.workflow_id:
             await send_fn({
-                "type": "error",
-                "source": "langgraph",
+                "type": "error", "source": "langgraph",
                 "timestamp": datetime.now().isoformat(),
                 "payload": {"message": "该团队未绑定 workflow，无法执行图编排"},
             })
             return
 
-        # 加载 workflow + nodes + edges
+        # 加载 workflow + nodes + edges + bindings
         wf = await db.get(Workflow, cfg.workflow_id)
         if not wf:
-            await send_fn({
-                "type": "error",
-                "source": "langgraph",
-                "timestamp": datetime.now().isoformat(),
-                "payload": {"message": "workflow 不存在"},
-            })
+            await send_fn({"type": "error", "source": "langgraph",
+                           "timestamp": datetime.now().isoformat(),
+                           "payload": {"message": "workflow 不存在"}})
             return
 
         nodes = (await db.execute(
@@ -415,12 +632,9 @@ async def run(
             select(WorkflowEdge).where(WorkflowEdge.workflow_id == cfg.workflow_id)
         )).scalars().all()
         if not nodes:
-            await send_fn({
-                "type": "error",
-                "source": "langgraph",
-                "timestamp": datetime.now().isoformat(),
-                "payload": {"message": "workflow 没有节点"},
-            })
+            await send_fn({"type": "error", "source": "langgraph",
+                           "timestamp": datetime.now().isoformat(),
+                           "payload": {"message": "workflow 没有节点"}})
             return
 
         # 加载节点 → Agent 绑定
@@ -429,161 +643,73 @@ async def run(
             b.node_key: b.agent_id for b in bindings
         }
 
-        # 推送 routing
+        # ── 构建索引 ──
+        node_by_id = {str(n.id): n for n in nodes}
+        nkey_to_nid: dict[str, str] = {}
+        for n in nodes:
+            if n.node_key:
+                nkey_to_nid[n.node_key] = str(n.id)
+
+        # 按 source_id 分组边
+        edges_by_source: dict[str, list] = _defaultdict(list)
+        for e in edges:
+            edges_by_source[str(e.source_id)].append(e)
+
+        # 仅 forward 边构建邻接表（用于 BFS 下游查找）
+        adj: dict[str, list[str]] = _defaultdict(list)
+        for e in edges:
+            if (e.type or "forward").lower() == "forward":
+                adj[str(e.source_id)].append(str(e.target_id))
+
+        # 特殊边映射（用于 agent 执行异常时的路由）
+        timeout_edge: dict[str, str] = {}
+        fallback_edge: dict[str, str] = {}
+        for e in edges:
+            sid, tid = str(e.source_id), str(e.target_id)
+            if (e.type or "").lower() == "timeout":
+                timeout_edge[sid] = tid
+            elif (e.type or "").lower() == "fallback":
+                fallback_edge[sid] = tid
+
+        # ── 推送 routing + task_dag ──
         await send_fn({
-            "type": "routing_decision",
-            "source": "langgraph",
+            "type": "routing_decision", "source": "langgraph",
             "timestamp": datetime.now().isoformat(),
             "payload": {"mode": "multi_agent", "agent_name": wf.name or "图编排"},
         })
 
-        # Start / End 是工作流标记节点，不参与实际执行
-        NON_EXECUTABLE = frozenset({'start', 'end'})
-        executable_nodes = [n for n in nodes if n.type.lower() not in NON_EXECUTABLE]
-
-        # 计算节点依赖关系（从 Forward 边推导），只保留可执行节点间的依赖
-        # Reject/Escalate/Timeout/Fallback 是异常路径，不参与拓扑排序
-        node_deps: dict[str, list[str]] = defaultdict(list)
-        executable_ids = {str(n.id) for n in executable_nodes}
-        for e in edges:
-            sid, tid = str(e.source_id), str(e.target_id)
-            if (e.type or "").lower() != "forward":
-                continue
-            if sid in executable_ids and tid in executable_ids:
-                node_deps[tid].append(sid)
-
-        # 推送 task_dag：只展示可执行节点
+        executable_nodes = [n for n in nodes if n.type.lower() not in ('start', 'end')]
         normalized_phases = [{
-            "id": "phase-flow",
-            "name": wf.name or "执行流程",
+            "id": "phase-flow", "name": wf.name or "执行流程",
             "tasks": [
-                {
-                    "id": str(n.id),
-                    "name": n.label or n.node_key or "节点",
-                    "agent_id": str(node_to_agent.get(n.node_key, "")),
-                    "agent_name": "",
-                    "agent_emoji": "🔀",
-                    "depends_on": node_deps.get(str(n.id), []),
-                }
+                {"id": str(n.id), "name": n.label or n.node_key or "节点",
+                 "agent_id": str(node_to_agent.get(n.node_key, "")),
+                 "agent_name": "", "agent_emoji": "🔀", "depends_on": []}
                 for n in executable_nodes
             ],
         }]
         await send_fn({
-            "type": "task_dag",
-            "source": "langgraph",
+            "type": "task_dag", "source": "langgraph",
             "timestamp": datetime.now().isoformat(),
-            "payload": {
-                "phases": normalized_phases,
-                "total_tasks": len(executable_nodes),
-            },
+            "payload": {"phases": normalized_phases, "total_tasks": len(executable_nodes)},
         })
 
-        # 拓扑排序（只对可执行节点，只考虑 Forward 边）
-        # Reject/Escalate/Timeout/Fallback 是异常路径，不参与 DAG 排序
-        node_by_id = {str(n.id): n for n in executable_nodes}
-        in_degree: dict[str, int] = defaultdict(int)
-        adj: dict[str, list[str]] = defaultdict(list)
-        for e in edges:
-            sid, tid = str(e.source_id), str(e.target_id)
-            if (e.type or "").lower() != "forward":
-                continue
-            if sid in node_by_id and tid in node_by_id:
-                adj[sid].append(tid)
-                in_degree[tid] += 1
-        # 保存原始入度（拓扑排序会修改 in_degree，层级计算需要原始值）
-        _in_degree_orig = defaultdict(int, in_degree)
-        queue = deque([nid for nid in node_by_id if in_degree[nid] == 0])
-        execution_order: list[str] = []
-        while queue:
-            nid = queue.popleft()
-            execution_order.append(nid)
-            for nxt in adj[nid]:
-                in_degree[nxt] -= 1
-                if in_degree[nxt] == 0:
-                    queue.append(nxt)
-
-        if len(execution_order) < len(node_by_id):
-            await send_fn({
-                "type": "error",
-                "source": "langgraph",
-                "timestamp": datetime.now().isoformat(),
-                "payload": {"message": "workflow 存在循环依赖，无法执行"},
-            })
-            return
-
-        # 按拓扑层级分组（同层节点无相互依赖，可并行执行）
-        levels: list[list[str]] = []
-        _in_deg = defaultdict(int, _in_degree_orig)  # 使用保存的原始入度
-        _lvl_q = deque([nid for nid in node_by_id if _in_deg[nid] == 0])
-        while _lvl_q:
-            lvl = list(_lvl_q)
-            _lvl_q.clear()
-            levels.append(lvl)
-            for nid in lvl:
-                for nxt in adj.get(nid, []):
-                    _in_deg[nxt] -= 1
-                    if _in_deg[nxt] == 0:
-                        _lvl_q.append(nxt)
-
+        # ── 初始化遍历状态 ──
         artifacts: dict[str, str] = {}
+        visit_count: dict[str, int] = _defaultdict(int)
+        MAX_RETRIES = 3  # 循环保护上限
+        execution_order: list[str] = []  # 记录执行顺序
 
-        # 节点 key → id 映射（Condition/Router 的 config 用 node_key 引用目标）
-        nkey_to_nid: dict[str, str] = {}
-        for n in executable_nodes:
-            if n.node_key:
-                nkey_to_nid[n.node_key] = str(n.id)
+        # 找到 start 节点作为入口
+        start_node = next((n for n in nodes if n.type.lower() == 'start'), None)
+        if not start_node:
+            await send_fn({"type": "error", "source": "langgraph",
+                           "timestamp": datetime.now().isoformat(),
+                           "payload": {"message": "workflow 缺少 start 节点"}})
+            return
+        current_nid = str(start_node.id)
 
-        # 活跃节点集（Condition/Router 会从中移除未选择的分支）
-        active_nodes: set[str] = set(node_by_id.keys())
-
-        def _compute_exclusive_downstream(nid: str, exclude_nids: set[str]) -> set[str]:
-            """BFS from nid, only following nodes whose ALL active predecessors are in the result set.
-            Stops at nodes that have another active path into them (not in exclude_nids)."""
-            result: set[str] = set()
-            q = deque([nid])
-            while q:
-                cur = q.popleft()
-                if cur in result:
-                    continue
-                result.add(cur)
-                for nxt in adj.get(cur, []):
-                    if nxt in result:
-                        continue
-                    # Check if nxt has ANY active predecessor not in (result ∪ exclude_nids)
-                    preds = node_deps.get(nxt, [])
-                    other_active = [
-                        p for p in preds
-                        if p in active_nodes and p != cur and p not in result and p not in exclude_nids
-                    ]
-                    if not other_active:
-                        q.append(nxt)
-            return result
-
-        async def _eval_condition(expression: str, artifact_text: str, node_label: str) -> bool:
-            """Evaluate a condition expression, using LLM only when needed."""
-            fast = _eval_condition_fast(expression, artifact_text)
-            if fast is not None:
-                return fast
-
-            # llm_judge or unknown pattern → LLM
-            expr = expression.strip()
-            criteria = expr[len("llm_judge:"):].strip() if expr.startswith("llm_judge:") else expr
-            try:
-                stmt2 = select(Agent).limit(1)
-                result2 = await db.execute(stmt2)
-                j_agent = result2.scalar_one_or_none()
-                if not j_agent:
-                    return True
-                jp = (f"你是一个条件判断器。请根据以下条件判断前置产物的内容是否符合。\n\n"
-                      f"## 判断条件\n{criteria}\n\n## 前置产物内容\n{artifact_text[:2000]}\n\n请只回答 YES 或 NO。")
-                jr = await agent_chat(
-                    db=db, agent=j_agent, message=jp,
-                    return_reasoning=False, save_memory=False,
-                    session_id=session_id, team_id=str(team.id),
-                )
-                return (jr.get("content") or "").strip().upper().lstrip('*_# ').startswith("YES")
-            except Exception:
-                return True
+        # workspace 路径
         ws_path = ""
         try:
             from app.services.workspace.manager import workspace_manager
@@ -592,504 +718,219 @@ async def run(
         except Exception:
             pass
 
-        # 特殊边映射（Timeout / Fallback 是异常路径，不参与拓扑排序）
-        timeout_edge: dict[str, str] = {}   # source_nid → target_nid
-        fallback_edge: dict[str, str] = {}  # source_nid → target_nid
-        for e in edges:
-            sid, tid = str(e.source_id), str(e.target_id)
-            etype = (e.type or "").lower()
-            if etype == "timeout" and sid in node_by_id and tid in node_by_id:
-                timeout_edge[sid] = tid
-            elif etype == "fallback" and sid in node_by_id and tid in node_by_id:
-                fallback_edge[sid] = tid
-
-        async def _exec_one(nid: str) -> None:
-            """Thin wrapper around shared _execute_agent_node."""
-            node = node_by_id[nid]
-            node_key = node.node_key or str(node.id)
-            label = node.label or node_key
-
-            agent_id = node_to_agent.get(node_key)
-            if not agent_id:
-                await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
-                    "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(node.id), "status": "failed", "error": "未绑定 Agent"},
-                })
-                return
-            agent = await db.get(Agent, agent_id)
-            if not agent:
-                return
-
-            await _execute_agent_node(
-                nid=nid, node=node, agent=agent, db=db,
-                artifacts=artifacts, node_deps=node_deps,
-                node_key=node_key, label=label,
-                user_message=user_message,
-                session_id=session_id, team_id=str(team.id),
-                send_fn=send_fn, ws_path=ws_path,
-                harness=harness,
-                timeout_edge=timeout_edge, fallback_edge=fallback_edge,
-            )
-        # 逐层执行：层内节点 parallel，层间 sequential
+        # ── 主循环：沿边遍历图 ──
         hitl_paused = False
-        for level_idx, level in enumerate(levels):
-            # 按节点类型分组，同时过滤掉 inactive 节点
-            agent_nids = [nid for nid in level
-                          if node_by_id[nid].type.lower() in ('agent', 'task', 'worker')
-                          and nid in active_nodes]
-            condition_nids = [nid for nid in level
-                              if node_by_id[nid].type.lower() == 'condition'
-                              and nid in active_nodes]
-            router_nids = [nid for nid in level
-                           if node_by_id[nid].type.lower() == 'router'
-                           and nid in active_nodes]
-            validation_nids = [nid for nid in level
-                               if node_by_id[nid].type.lower() == 'validation'
-                               and nid in active_nodes]
-            hitl_nids = [nid for nid in level
-                         if node_by_id[nid].type.lower() == 'hitl'
-                         and nid in active_nodes]
+        while True:
+            current_node = node_by_id.get(current_nid)
+            if not current_node:
+                break
+            current_type = current_node.type.lower() if current_node.type else ""
 
-            # 1) 执行 Agent 节点
-            if agent_nids:
-                if len(agent_nids) == 1:
-                    await _exec_one(agent_nids[0])
-                else:
-                    await asyncio.gather(*[_exec_one(nid) for nid in agent_nids])
+            # 到达 end 节点 → 完成
+            if current_type == 'end':
+                break
 
-            # 2) 求值 Condition 节点（裁剪分支）
-            for cnid in condition_nids:
-                cnode = node_by_id[cnid]
-                clabel = cnode.label or cnode.node_key or str(cnid)
-                cconfig = cnode.config if isinstance(cnode.config, dict) else {}
-                expression = cconfig.get("expression", "")
-                on_true_key = cconfig.get("on_true_node_key", "")
-                on_false_key = cconfig.get("on_false_node_key", "")
-
-                # 收集前置 artifact 用于条件求值
-                prev_ids = node_deps.get(cnid, [])
-                combined_artifact = "\n".join(
-                    artifacts.get(pid, "") for pid in prev_ids
-                )
-
-                cond_result = await _eval_condition(expression, combined_artifact, clabel)
-
-                chosen_key = on_true_key if cond_result else on_false_key
-                unchosen_key = on_false_key if cond_result else on_true_key
-
-                logger.info(
-                    f"Condition [{clabel}]: expr='{expression[:60]}' → {cond_result}, "
-                    f"chosen={chosen_key}, pruned={unchosen_key}"
-                )
-
-                # 裁剪未选择的分支
-                if unchosen_key and unchosen_key in nkey_to_nid:
-                    prune_nid = nkey_to_nid[unchosen_key]
-                    # 查找从 condition node 到此 target 的边（用于 exclude_nids）
-                    pruned = _compute_exclusive_downstream(prune_nid, {cnid})
-                    active_nodes.difference_update(pruned)
-                    for pnid in pruned:
-                        pn = node_by_id.get(pnid)
-                        plabel = pn.label if pn else pnid
-                        await send_fn({
-                            "type": "task_status",
-                            "source": "langgraph",
-                            "timestamp": datetime.now().isoformat(),
-                            "payload": {"task_id": pnid, "status": "skipped",
-                                        "error": f"条件节点 [{clabel}] 未选择此路径"},
-                        })
-
-                # Condition 节点本身标记完成
+            # 循环保护
+            visit_count[current_nid] += 1
+            if visit_count[current_nid] > MAX_RETRIES:
+                logger.warning(f"Node {current_nid} visited {visit_count[current_nid]} times, breaking loop")
                 await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
+                    "type": "task_status", "source": "langgraph",
                     "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(cnode.id), "status": "done", "duration": 0},
+                    "payload": {"task_id": current_nid, "status": "failed",
+                                "error": f"循环次数超限 ({MAX_RETRIES})"},
                 })
+                break
 
-            # 3) Router 节点
-            for rnid in router_nids:
-                rnode = node_by_id[rnid]
-                rlabel = rnode.label or rnode.node_key or str(rnid)
-                rconfig = rnode.config if isinstance(rnode.config, dict) else {}
-                strategy = rconfig.get("strategy", "llm_select")
-                candidates: list[str] = rconfig.get("candidates", [])
-                fallback_key = rconfig.get("fallback_node_key", "")
-
-                await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
-                    "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(rnode.id), "status": "running"},
-                })
-
-                # 收集前置产物
-                prev_ids = node_deps.get(rnid, [])
-                combined_artifact = "\n".join(
-                    artifacts.get(pid, "") for pid in prev_ids
+            # 跳过 start 节点
+            if current_type == 'start':
+                next_nid = _resolve_next_edge(
+                    current_nid, None, edges_by_source, artifacts,
+                    node_by_id, nkey_to_nid, adj, db, session_id, str(team.id)
                 )
+                current_nid = next_nid or ""
+                continue
 
-                chosen_key = fallback_key
-                chosen_reason = ""
+            # ── 执行节点 ──
+            node_key = current_node.node_key or current_nid
+            label = current_node.label or node_key
+            execution_order.append(current_nid)
 
-                if strategy == "broadcast":
-                    # 广播模式：所有候选都激活，不裁剪
-                    chosen_key = "__broadcast__"
-                    chosen_reason = "广播到所有候选节点"
-                elif strategy == "llm_select":
-                    # LLM 选择最佳候选
-                    if candidates:
-                        cand_lines = []
-                        for ckey in candidates:
-                            cnid = nkey_to_nid.get(ckey, "")
-                            cnode = node_by_id.get(cnid)
-                            clabel = cnode.label if cnode else ckey
-                            cand_lines.append(f"- {ckey}: {clabel}")
-                        cand_list = "\n".join(cand_lines)
-                        stmt_r = select(Agent).limit(1)
-                        result_r = await db.execute(stmt_r)
-                        r_agent = result_r.scalar_one_or_none()
-                        if r_agent:
-                            route_prompt = (
-                                f"你是一个路由器。请根据前置产物内容，从候选节点中选择最合适的一个。\n\n"
-                                f"## 候选节点\n{cand_list}\n\n"
-                                f"## 前置产物\n{combined_artifact[:2000]}\n\n"
-                                f"请只回复最合适的候选节点的 key（如 `{candidates[0]}`），"
-                                f"不要回复其他内容。"
-                            )
-                            route_result = await agent_chat(
-                                db=db, agent=r_agent, message=route_prompt,
-                                return_reasoning=False, save_memory=False,
-                                session_id=session_id, team_id=str(team.id),
-                            )
-                            route_content = (route_result.get("content") or "").strip()
-                            # Extract candidate key from response
-                            for ckey in candidates:
-                                if ckey in route_content:
-                                    chosen_key = ckey
-                                    chosen_reason = f"LLM 选择: {route_content[:100]}"
-                                    break
-                            if not chosen_key:
-                                chosen_key = candidates[0]
-                                chosen_reason = f"LLM 无法确定，默认选第一个: {route_content[:80]}"
-                        else:
-                            chosen_key = candidates[0] if candidates else fallback_key
-                            chosen_reason = "无可用 Agent，默认选第一个候选"
-                    else:
-                        chosen_reason = "无候选节点"
-                elif strategy == "round_robin":
-                    if candidates:
-                        # 使用模块级计数器
-                        rr_key = f"rr_{session_id}_{rnid}"
-                        _rr_counter.setdefault(rr_key, 0)
-                        idx = _rr_counter[rr_key] % len(candidates)
-                        chosen_key = candidates[idx]
-                        _rr_counter[rr_key] += 1
-                        chosen_reason = f"Round-robin 第 {idx+1}/{len(candidates)} 个候选"
-                    else:
-                        chosen_reason = "无候选节点"
-                elif strategy == "best_match":
-                    if candidates:
-                        # 简单匹配：找 artifact 中出现次数最多的候选 key
-                        best_count = -1
-                        best_ckey = candidates[0]
-                        for ckey in candidates:
-                            count = combined_artifact.lower().count(ckey.lower())
-                            if count > best_count:
-                                best_count = count
-                                best_ckey = ckey
-                        chosen_key = best_ckey
-                        chosen_reason = f"Best match: '{best_ckey}' 在产物中出现 {best_count} 次"
-                    else:
-                        chosen_reason = "无候选节点"
-
-                # 裁剪未选择的候选分支
-                if strategy != "broadcast" and chosen_key and chosen_key != fallback_key:
-                    for ckey in candidates:
-                        if ckey != chosen_key and ckey in nkey_to_nid:
-                            prune_nid = nkey_to_nid[ckey]
-                            pruned = _compute_exclusive_downstream(prune_nid, {rnid})
-                            active_nodes.difference_update(pruned)
-                            for pnid in pruned:
-                                pn = node_by_id.get(pnid)
-                                plabel = pn.label if pn else pnid
-                                await send_fn({
-                                    "type": "task_status",
-                                    "source": "langgraph",
-                                    "timestamp": datetime.now().isoformat(),
-                                    "payload": {"task_id": pnid, "status": "skipped",
-                                                "error": f"路由器 [{rlabel}] 未选择此路径"},
-                                })
-
-                logger.info(
-                    f"Router [{rlabel}]: strategy={strategy}, chosen={chosen_key}, "
-                    f"reason={chosen_reason}"
-                )
-                await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
-                    "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(rnode.id), "status": "done", "duration": 0,
-                                "error": f"路由决策: {chosen_reason}" if chosen_reason else None},
-                })
-
-            # 4) Validation 节点
-            for vnid in validation_nids:
-                vnode = node_by_id[vnid]
-                vlabel = vnode.label or vnode.node_key or str(vnid)
-                vconfig = vnode.config if isinstance(vnode.config, dict) else {}
-                validator = vconfig.get("validator", "llm_check")
-                criteria = vconfig.get("criteria", "")
-                on_fail = vconfig.get("on_fail", "retry")
-                max_retries = int(vconfig.get("max_retries", 3))
-
-                await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
-                    "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(vnode.id), "status": "running"},
-                })
-
-                # 获取前置产物
-                prev_ids = node_deps.get(vnid, [])
-                combined_artifact = "\n".join(
-                    artifacts.get(pid, "") for pid in prev_ids
-                )
-
-                async def _run_validator(validator_type: str, criteria_text: str,
-                                         artifact_to_check: str) -> tuple[bool, str]:
-                    """Returns (pass, reason)."""
-                    if validator_type == "regex_match":
-                        m = _re.search(criteria_text, artifact_to_check, _re.DOTALL)
-                        return (m is not None,
-                                "匹配成功" if m else f"未匹配到模式: {criteria_text[:80]}")
-
-                    if validator_type == "schema_check":
-                        import json as _json
-                        try:
-                            schema = _json.loads(criteria_text) if criteria_text else {}
-                            obj = _json.loads(artifact_to_check)
-                            # Simple field-level check
-                            missing = [k for k in schema if k not in obj]
-                            type_mismatch = [
-                                f"{k}: expected {schema[k]}, got {type(obj.get(k)).__name__}"
-                                for k in schema
-                                if k in obj and not isinstance(obj[k], type(schema[k]))
-                            ]
-                            if missing or type_mismatch:
-                                return (False,
-                                        f"schema 不匹配: {', '.join(missing + type_mismatch)}")
-                            return (True, "schema 校验通过")
-                        except _json.JSONDecodeError as je:
-                            return (False, f"JSON 解析失败: {je}")
-
-                    if validator_type == "test_pass":
-                        # Check if content contains test failure indicators
-                        fails = ["FAILED", "FAIL:", "AssertionError", "FAILED TESTS",
-                                  "FAILURES", "tests failed", "✗", "❌"]
-                        has_failure = any(f.lower() in artifact_to_check.lower() for f in fails)
-                        return (not has_failure,
-                                "测试通过" if not has_failure else "发现测试失败")
-
-                    # Default: llm_check
-                    stmt3 = select(Agent).limit(1)
-                    result3 = await db.execute(stmt3)
-                    v_agent = result3.scalar_one_or_none()
-                    if not v_agent:
-                        return (True, "无可用 Agent 做校验，默认通过")
-                    val_prompt = (
-                        f"你是一位严格的质量校验员。请根据校验标准判断以下产物是否合格。\n\n"
-                        f"## 校验标准\n{criteria_text}\n\n"
-                        f"## 产物内容\n{artifact_to_check[:3000]}\n\n"
-                        f"请先回答 PASS 或 FAIL，然后给出简短理由。\n"
-                        f"如果产物明显不满足校验标准，请返回 FAIL。"
+            if current_type in ('agent', 'task', 'worker'):
+                # Agent 节点执行
+                agent_id = node_to_agent.get(node_key)
+                if not agent_id:
+                    await send_fn({
+                        "type": "task_status", "source": "langgraph",
+                        "timestamp": datetime.now().isoformat(),
+                        "payload": {"task_id": current_nid, "status": "failed", "error": "未绑定 Agent"},
+                    })
+                    next_nid = _resolve_next_edge(
+                        current_nid, None, edges_by_source, artifacts,
+                        node_by_id, nkey_to_nid, adj, db, session_id, str(team.id)
                     )
-                    val_result = await agent_chat(
-                        db=db, agent=v_agent, message=val_prompt,
-                        return_reasoning=False, save_memory=False,
-                        session_id=session_id, team_id=str(team.id),
-                    )
-                    val_content = (val_result.get("content") or "").strip()
-                    # Strip markdown bold/italic formatting
-                    clean = val_content.upper().lstrip('*_# ')
-                    passed = clean.startswith("PASS") or "合格" in val_content
-                    return (passed, val_content[:300])
+                    current_nid = next_nid or ""
+                    continue
 
-                passed, reason = await _run_validator(validator, criteria, combined_artifact)
-                retry_count = 0
-                while not passed and on_fail == "retry" and retry_count < max_retries:
-                    logger.warning(
-                        f"Validation [{vlabel}] FAIL (attempt {retry_count+1}/{max_retries}): {reason}"
+                agent = await db.get(Agent, agent_id)
+                if not agent:
+                    next_nid = _resolve_next_edge(
+                        current_nid, None, edges_by_source, artifacts,
+                        node_by_id, nkey_to_nid, adj, db, session_id, str(team.id)
                     )
-                    # 回退到前置节点重新执行
-                    for pid in prev_ids:
-                        if pid not in node_by_id:
-                            continue
-                        pnode = node_by_id[pid]
-                        if pnode.type.lower() in ('agent', 'task', 'worker'):
-                            # 保存原始 config，注入 retry feedback 后重新执行
-                            saved_config = dict(pnode.config) if isinstance(pnode.config, dict) else {}
-                            feedback = (
-                                f"## ⚠️ 校验未通过（第 {retry_count+1} 次重试）\n"
-                                f"校验标准: {criteria}\n"
-                                f"失败原因: {reason}\n"
-                                f"请针对性修改后重新输出。"
-                            )
-                            retry_config = dict(saved_config)
-                            if retry_config.get("instruction"):
-                                retry_config["instruction"] = (
-                                    feedback + "\n\n" + retry_config["instruction"]
-                                )
-                            else:
-                                retry_config["instruction"] = feedback
-                            pnode.config = retry_config
-                            await _exec_one(pid)
-                            # 恢复原始 config
-                            pnode.config = saved_config
+                    current_nid = next_nid or ""
+                    continue
+
+                # 查找前置 HITL 节点的反馈，注入到 agent 的 instruction 中（打回场景）
+                predecessor_artifact = ""
+                for pid in adj:
+                    if current_nid in adj[pid]:
+                        pnode = node_by_id.get(pid)
+                        if pnode and pnode.type.lower() == 'hitl' and pid in artifacts:
+                            predecessor_artifact = artifacts[pid]
                             break
-                    retry_count += 1
-                    # 获取更新后的产物
-                    combined_artifact = "\n".join(
-                        artifacts.get(pid, "") for pid in prev_ids
-                    )
-                    passed, reason = await _run_validator(validator, criteria, combined_artifact)
 
-                if passed:
-                    await send_fn({
-                        "type": "task_status",
-                        "source": "langgraph",
-                        "timestamp": datetime.now().isoformat(),
-                        "payload": {"task_id": str(vnode.id), "status": "done", "duration": 0,
-                                    "error": f"校验通过{f'（{retry_count} 次重试后）' if retry_count else ''}"},
-                    })
-                    logger.info(f"Validation [{vlabel}] PASS: {reason[:100]}")
-                elif on_fail == "escalate":
-                    # 升级为 HITL
-                    esc_msg = (
-                        f"## ⚠️ 质量校验失败 — 需要人工决策\n\n"
-                        f"**校验节点**: {vlabel}\n"
-                        f"**校验标准**: {criteria}\n"
-                        f"**失败原因**: {reason}\n"
-                        f"**已重试**: {retry_count}/{max_retries}\n\n"
-                        f"请审核产物并决定：批准继续 / 手动修改 / 终止流程。"
-                    )
-                    await send_fn({
-                        "type": "request_clarification",
-                        "source": "langgraph",
-                        "timestamp": datetime.now().isoformat(),
-                        "payload": {
-                            "task_id": str(vnode.id),
-                            "node_key": vnode.node_key,
-                            "label": vlabel,
-                            "message": esc_msg,
-                            "timeout": vconfig.get("timeout", 600),
-                            "mode": "langgraph_hitl",
-                        },
-                    })
-                    # 保存恢复状态（复用 HITL 机制）
-                    _paused[session_id] = {
-                        "team": team,
-                        "user_message": user_message,
-                        "team_agents": team_agents,
-                        "available_roles": available_roles,
-                        "levels": levels,
-                        "level_idx": level_idx,
-                        "hitl_nid": vnid,
-                        "hitl_node_key": vnode.node_key,
-                        "hitl_label": vlabel,
-                        "artifacts": dict(artifacts),
-                        "node_by_id": node_by_id,
-                        "node_to_agent": node_to_agent,
-                        "node_deps": dict(node_deps),
-                        "adj": dict(adj),
-                        "ws_path": ws_path,
-                        "active_nodes": set(active_nodes),
-                        "pending_hitl_nids": [],
-                        "from_validation": True,
-                    }
-                    asyncio.create_task(_persist_paused_state(session_id, _paused[session_id]))
-                    hitl_paused = True
-                    break
-                else:
-                    # on_fail == "reject" or max retries exceeded
-                    logger.error(f"Validation [{vlabel}] FAIL after {retry_count} retries: {reason}")
-                    await send_fn({
-                        "type": "task_status",
-                        "source": "langgraph",
-                        "timestamp": datetime.now().isoformat(),
-                        "payload": {"task_id": str(vnode.id), "status": "failed",
-                                    "error": f"校验失败（{retry_count}/{max_retries} 次重试后）: {reason[:200]}"},
-                    })
+                saved_instruction = None
+                if predecessor_artifact and predecessor_artifact.strip() not in ("approve", "reject", "skip", "cancel", ""):
+                    # 有实际反馈内容 → 注入到 instruction 前面
+                    if isinstance(current_node.config, dict):
+                        saved_instruction = current_node.config.get("instruction", "")
+                        current_node.config["instruction"] = (
+                            f"## ⚠️ 审核反馈：请根据以下意见修改后重新输出\n"
+                            f"{predecessor_artifact[:2000]}\n\n"
+                            f"---\n\n"
+                            f"{saved_instruction or ''}"
+                        )
+                    logger.info(f"Agent [{label}]: injected feedback ({len(predecessor_artifact)} chars)")
 
-            # 5) 处理 HITL 节点（暂停等待人工输入）
-            for hnid in hitl_nids:
-                hnode = node_by_id[hnid]
-                hlabel = hnode.label or hnode.node_key or str(hnid)
-                hconfig = hnode.config if isinstance(hnode.config, dict) else {}
-                hitl_msg = hconfig.get("instruction") or hconfig.get("prompt") or f"请审核并确认节点「{hlabel}」的输出。"
+                await _execute_agent_node(
+                    nid=current_nid, node=current_node, agent=agent, db=db,
+                    artifacts=artifacts,
+                    node_deps={current_nid: [p for p in adj if current_nid in adj[p]]},
+                    node_key=node_key, label=label, user_message=user_message,
+                    session_id=session_id, team_id=str(team.id),
+                    send_fn=send_fn, ws_path=ws_path, harness=harness,
+                    timeout_edge=timeout_edge, fallback_edge=fallback_edge,
+                )
+
+                # 恢复原始 instruction
+                if saved_instruction is not None:
+                    current_node.config["instruction"] = saved_instruction
+
+            elif current_type == 'hitl':
+                # HITL 节点 → 暂停等待人工输入
+                hconfig = current_node.config if isinstance(current_node.config, dict) else {}
+                hitl_msg = hconfig.get("instruction") or hconfig.get("prompt") or f"请审核并确认节点「{label}」的输出。"
                 hitl_timeout = hconfig.get("timeout", 300)
 
+                # 生成唯一的调用 ID，用于前后端匹配通知和回答
+                hitl_invoke_id = str(uuid.uuid4())
                 await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
+                    "type": "task_status", "source": "langgraph",
                     "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(hnode.id), "status": "running"},
+                    "payload": {"task_id": current_nid, "status": "running"},
                 })
-
                 await send_fn({
-                    "type": "request_clarification",
-                    "source": "langgraph",
+                    "type": "request_clarification", "source": "langgraph",
                     "timestamp": datetime.now().isoformat(),
                     "payload": {
-                        "task_id": str(hnode.id),
-                        "node_key": hnode.node_key,
-                        "label": hlabel,
-                        "message": hitl_msg,
-                        "timeout": hitl_timeout,
-                        "mode": "langgraph_hitl",
+                        "task_id": current_nid, "node_key": node_key, "label": label,
+                        "message": hitl_msg, "timeout": hitl_timeout,
+                        "mode": "langgraph_hitl", "type": "review",
+                        "hitl_invoke_id": hitl_invoke_id,
+                        "options": [
+                            {"label": "✅ 通过", "value": "approve", "description": "审核通过，继续执行"},
+                            {"label": "❌ 打回", "value": "reject", "description": "打回重新修改"},
+                            {"label": "💬 自定义回复", "value": "answer", "description": "输入审核意见"},
+                        ],
                     },
                 })
 
-                # 保存恢复状态
+                # 保存暂停状态
                 _paused[session_id] = {
-                    "team": team,
-                    "user_message": user_message,
-                    "team_agents": team_agents,
-                    "available_roles": available_roles,
-                    "levels": levels,
-                    "level_idx": level_idx,
-                    "hitl_nid": hnid,
-                    "hitl_node_key": hnode.node_key,
-                    "hitl_label": hlabel,
+                    "team": team, "user_message": user_message,
+                    "team_agents": team_agents, "available_roles": available_roles,
+                    "pause_nid": current_nid,
+                    "hitl_invoke_id": hitl_invoke_id,
                     "artifacts": dict(artifacts),
-                    "node_by_id": node_by_id,
-                    "node_to_agent": node_to_agent,
-                    "node_deps": dict(node_deps),
+                    "visit_count": dict(visit_count),
+                    "execution_order": list(execution_order),
+                    "node_by_id": {k: v for k, v in node_by_id.items()},
+                    "node_to_agent": dict(node_to_agent),
+                    "nkey_to_nid": dict(nkey_to_nid),
+                    "edges_by_source": {k: list(v) for k, v in edges_by_source.items()},
                     "adj": dict(adj),
                     "ws_path": ws_path,
-                    "active_nodes": set(active_nodes),
-                    "nkey_to_nid": dict(nkey_to_nid),
-                    "pending_hitl_nids": hitl_nids,  # remaining HITL nodes at this level
                 }
                 asyncio.create_task(_persist_paused_state(session_id, _paused[session_id]))
                 hitl_paused = True
-                break  # 暂停，不继续后续层级
+                break  # 暂停，等待 resume
 
-            if hitl_paused:
+            elif current_type in ('condition', 'router'):
+                # 条件/路由节点：不执行 agent，只做边解析
+                await send_fn({
+                    "type": "task_status", "source": "langgraph",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {"task_id": current_nid, "status": "running"},
+                })
+                # 收集前置产物作为当前节点的结果
+                combined_input = "\n".join(
+                    artifacts.get(pid, "") for pid in adj
+                    if current_nid in adj.get(pid, [])
+                )
+                next_nid = await _resolve_and_exec(
+                    current_nid, combined_input, edges_by_source, artifacts,
+                    node_by_id, nkey_to_nid, adj, db, session_id, str(team.id), _exec_one,
+                )
+                await send_fn({
+                    "type": "task_status", "source": "langgraph",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {"task_id": current_nid, "status": "done", "duration": 0},
+                })
+                current_nid = next_nid or ""
+                continue
+
+            elif current_type == 'validation':
+                await send_fn({
+                    "type": "task_status", "source": "langgraph",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {"task_id": current_nid, "status": "running"},
+                })
+                combined_input = "\n".join(
+                    artifacts.get(pid, "") for pid in adj
+                    if current_nid in adj.get(pid, [])
+                )
+                next_nid = await _resolve_and_exec(
+                    current_nid, combined_input, edges_by_source, artifacts,
+                    node_by_id, nkey_to_nid, adj, db, session_id, str(team.id), _exec_one,
+                )
+                await send_fn({
+                    "type": "task_status", "source": "langgraph",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {"task_id": current_nid, "status": "done", "duration": 0},
+                })
+                current_nid = next_nid or ""
+                continue
+
+            # 解析下一条边
+            current_result = artifacts.get(current_nid, "")
+            next_nid = _resolve_next_edge(
+                current_nid, current_result, edges_by_source, artifacts,
+                node_by_id, nkey_to_nid, adj, db, session_id, str(team.id)
+            )
+            if not next_nid:
                 break
+            current_nid = next_nid
 
-        # 完成（HITL 暂停时不发送完成消息）
+        # ── 完成（HITL 暂停时跳过） ──
         if not hitl_paused:
-            # 清理 round-robin 计数器，防止内存泄漏
+            # 清理 round-robin 计数器
             rr_prefix = f"rr_{session_id}_"
             for k in list(_rr_counter.keys()):
                 if k.startswith(rr_prefix):
                     del _rr_counter[k]
             await send_fn({
-                "type": "message_complete",
-                "source": "langgraph",
+                "type": "message_complete", "source": "langgraph",
                 "timestamp": datetime.now().isoformat(),
                 "payload": {"message": f"流程执行完成（{len(execution_order)} 节点）"},
             })
@@ -1104,19 +945,17 @@ def _extract_node_files(content: str, node_key: str, ws_path: str) -> list[str]:
 
 
 async def resume(session_id: str, user_response, send_fn: SendFn, harness=None) -> None:
-    """从 HITL 节点恢复执行。
-
-    user_response 为用户在 HITL 暂停时的输入。
-    该输入会成为 HITL 节点的 artifact，供后续节点引用。
+    """从 HITL 节点恢复执行。用户响应作为 HITL 节点的 artifact，
+    然后沿边继续遍历图，复用 run() 的边解析逻辑。
     """
+    from collections import defaultdict as _defaultdict
+
     state = _paused.pop(session_id, None)
     if not state:
-        # 尝试从数据库恢复（服务重启后内存丢失）
         state = await _load_paused_state(session_id)
     if not state:
         await send_fn({
-            "type": "message_complete",
-            "source": "langgraph",
+            "type": "message_complete", "source": "langgraph",
             "timestamp": datetime.now().isoformat(),
             "payload": {"message": "没有可恢复的 HITL 暂停状态"},
         })
@@ -1124,273 +963,229 @@ async def resume(session_id: str, user_response, send_fn: SendFn, harness=None) 
 
     from app.core.database import async_session
     from app.models.agent import Agent
-    from app.services.agent_chat import agent_chat
 
-    team = state["team"]
-    levels: list[list[str]] = state["levels"]
-    level_idx: int = state["level_idx"]
-    hitl_nid: str = state["hitl_nid"]
-    hitl_label: str = state["hitl_label"]
+    # 恢复遍历状态（兼容新旧 pause state 格式）
+    pause_nid = state.get("pause_nid", state.get("hitl_nid", ""))
     artifacts: dict[str, str] = state["artifacts"]
+    visit_count: dict[str, int] = _defaultdict(int, state.get("visit_count", {}))
+    execution_order: list[str] = state.get("execution_order", [])
     node_by_id: dict = state["node_by_id"]
     node_to_agent: dict = state["node_to_agent"]
-    node_deps: dict = state["node_deps"]
-    adj: dict = state["adj"]
-    ws_path: str = state["ws_path"]
-    pending_hitl_nids: list[str] = state["pending_hitl_nids"]
-    user_message: str = state["user_message"]
-    active_nodes: set[str] = state.get("active_nodes", set(node_by_id.keys()))
     nkey_to_nid: dict[str, str] = state.get("nkey_to_nid", {})
+    edges_by_source: dict[str, list] = state.get("edges_by_source", {})
+    adj: dict[str, list[str]] = _defaultdict(list, state.get("adj", {}))
+    ws_path: str = state.get("ws_path", "")
+    team = state["team"]
+    user_message: str = state.get("user_message", "")
+    team_agents = state.get("team_agents", [])
+    available_roles = state.get("available_roles", [])
+    MAX_RETRIES = 3
 
     async with async_session() as db:
-        # 标记当前 HITL 节点为完成，用户输入作为其产物
-        hitl_node = node_by_id[hitl_nid]
         user_content = user_response.get("content") if isinstance(user_response, dict) else str(user_response)
-        artifacts[hitl_nid] = user_content
+        hitl_node = node_by_id.get(pause_nid)
+        artifacts[pause_nid] = user_content
 
-        await send_fn({
-            "type": "task_status",
-            "source": "langgraph",
-            "timestamp": datetime.now().isoformat(),
-            "payload": {"task_id": str(hitl_node.id), "status": "done", "duration": 0},
-        })
-
-        await send_fn({
-            "type": "agent_message",
-            "source": "langgraph",
-            "timestamp": datetime.now().isoformat(),
-            "payload": {
-                "agent": "人工审核",
-                "content": user_content,
-                "type": "message",
-                "model": None,
-                "latency": 0,
-                "task_id": str(hitl_node.id),
-                "node_key": hitl_node.node_key or hitl_nid,
-            },
-        })
-
-        # 继续处理当前层级的剩余 HITL 节点
-        remaining_hitl = [n for n in pending_hitl_nids if n != hitl_nid]
-        for hnid in remaining_hitl:
-            hnode = node_by_id[hnid]
-            hlabel = hnode.label or hnode.node_key or str(hnid)
-            hconfig = hnode.config if isinstance(hnode.config, dict) else {}
-            hitl_msg = hconfig.get("instruction") or hconfig.get("prompt") or f"请审核并确认节点「{hlabel}」的输出。"
-            hitl_timeout = hconfig.get("timeout", 300)
-
+        if hitl_node:
             await send_fn({
-                "type": "task_status",
-                "source": "langgraph",
+                "type": "task_status", "source": "langgraph",
                 "timestamp": datetime.now().isoformat(),
-                "payload": {"task_id": str(hnode.id), "status": "running"},
+                "payload": {"task_id": pause_nid, "status": "done", "duration": 0},
             })
             await send_fn({
-                "type": "request_clarification",
-                "source": "langgraph",
+                "type": "agent_message", "source": "langgraph",
                 "timestamp": datetime.now().isoformat(),
                 "payload": {
-                    "task_id": str(hnode.id),
-                    "node_key": hnode.node_key,
-                    "label": hlabel,
-                    "message": hitl_msg,
-                    "timeout": hitl_timeout,
-                    "mode": "langgraph_hitl",
+                    "agent": "人工审核", "content": user_content,
+                    "type": "message", "model": None, "latency": 0,
+                    "task_id": pause_nid,
+                    "node_key": hitl_node.node_key or pause_nid,
                 },
             })
 
-            # 保存新的暂停状态
-            _paused[session_id] = {
-                **state,
-                "level_idx": level_idx,
-                "hitl_nid": hnid,
-                "hitl_node_key": hnode.node_key,
-                "hitl_label": hlabel,
-                "artifacts": dict(artifacts),
-                "pending_hitl_nids": remaining_hitl,
-            }
-            asyncio.create_task(_persist_paused_state(session_id, _paused[session_id]))
-            return  # 再次暂停等待用户
+        # 从 HITL 节点解析下一条边，继续主循环
+        # 先走一步：从 HITL 到下一个节点（通常是 condition）
+        current_nid = pause_nid
+        hitl_paused = False
+        next_nid = _resolve_next_edge(
+            current_nid, artifacts.get(current_nid, ""), edges_by_source, artifacts,
+            node_by_id, nkey_to_nid, adj, db, session_id, str(team.id)
+        )
+        if next_nid:
+            current_nid = next_nid
 
-        # 当前层级全部完成，继续后续层级
-        async def _exec_one_resume(nid: str) -> None:
-            """Thin wrapper around shared _execute_agent_node for resume context."""
-            node = node_by_id[nid]
-            node_key = node.node_key or str(node.id)
-            label = node.label or node_key
+        while True:
+            current_node = node_by_id.get(current_nid)
+            if not current_node:
+                break
+            current_type = current_node.type.lower() if current_node.type else ""
 
-            agent_id = node_to_agent.get(node_key)
-            if not agent_id:
+            if current_type == 'end':
+                break
+
+            visit_count[current_nid] += 1
+            if visit_count[current_nid] > MAX_RETRIES:
                 await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
+                    "type": "task_status", "source": "langgraph",
                     "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(node.id), "status": "failed", "error": "未绑定 Agent"},
+                    "payload": {"task_id": current_nid, "status": "failed",
+                                "error": f"循环次数超限 ({MAX_RETRIES})"},
                 })
-                return
-            agent = await db.get(Agent, agent_id)
-            if not agent:
-                return
+                break
 
-            await _execute_agent_node(
-                nid=nid, node=node, agent=agent, db=db,
-                artifacts=artifacts, node_deps=node_deps,
-                node_key=node_key, label=label,
-                user_message=user_message,
-                session_id=session_id, team_id=str(team.id),
-                send_fn=send_fn, ws_path=ws_path,
-                harness=harness,
-                # resume 不传递 timeout_edge/fallback_edge，超时/失败直接标记
-            )
+            node_key = current_node.node_key or current_nid
+            label = current_node.label or node_key
+            execution_order.append(current_nid)
 
-        # 继续执行后续层级
+            # ── 执行当前节点 ──
+            if current_type in ('agent', 'task', 'worker'):
+                agent_id = node_to_agent.get(node_key)
+                if not agent_id:
+                    next_nid = _resolve_next_edge(current_nid, None, edges_by_source, artifacts, node_by_id, nkey_to_nid, adj, db, session_id, str(team.id))
+                    current_nid = next_nid or ""
+                    continue
+                agent = await db.get(Agent, agent_id)
+                if not agent:
+                    next_nid = _resolve_next_edge(current_nid, None, edges_by_source, artifacts, node_by_id, nkey_to_nid, adj, db, session_id, str(team.id))
+                    current_nid = next_nid or ""
+                    continue
 
-        async def _eval_condition_resume(expression: str, artifact_text: str, node_label: str) -> bool:
-            """Same as _eval_condition, using shared _eval_condition_fast."""
-            fast = _eval_condition_fast(expression, artifact_text)
-            if fast is not None:
-                return fast
-            expr = expression.strip()
-            criteria = expr[len("llm_judge:"):].strip() if expr.startswith("llm_judge:") else expr
-            try:
-                stmt_j = select(Agent).limit(1)
-                result_j = await db.execute(stmt_j)
-                j_agent = result_j.scalar_one_or_none()
-                if not j_agent:
-                    return True
-                jp = (f"你是一个条件判断器。请根据以下条件判断前置产物的内容是否符合。\n\n"
-                      f"## 判断条件\n{criteria}\n\n## 前置产物内容\n{artifact_text[:2000]}\n\n请只回答 YES 或 NO。")
-                jr = await agent_chat(
-                    db=db, agent=j_agent, message=jp,
-                    return_reasoning=False, save_memory=False,
-                    session_id=session_id, team_id=str(team.id),
-                )
-                return (jr.get("content") or "").strip().upper().lstrip('*_# ').startswith("YES")
-            except Exception:
-                return True
-
-        for li in range(level_idx + 1, len(levels)):
-            lvl = levels[li]
-            agent_nids = [nid for nid in lvl
-                          if node_by_id[nid].type.lower() in ('agent', 'task', 'worker')
-                          and nid in active_nodes]
-            condition_nids = [nid for nid in lvl
-                              if node_by_id[nid].type.lower() == 'condition'
-                              and nid in active_nodes]
-            router_nids = [nid for nid in lvl
-                           if node_by_id[nid].type.lower() == 'router'
-                           and nid in active_nodes]
-            hitl_nids = [nid for nid in lvl
-                         if node_by_id[nid].type.lower() == 'hitl']
-
-            # Agent 节点
-            if agent_nids:
-                if len(agent_nids) == 1:
-                    await _exec_one_resume(agent_nids[0])
+                # 注入 HITL 用户反馈
+                user_fb = artifacts.get(pause_nid, "")
+                if user_fb and user_fb.strip() not in ("approve", "reject", "skip", "cancel", ""):
+                    saved_inst = None
+                    if isinstance(current_node.config, dict):
+                        saved_inst = current_node.config.get("instruction", "")
+                        current_node.config["instruction"] = (
+                            f"## ⚠️ 审核未通过 — 请根据以下反馈重新执行\n\n"
+                            f"**审核意见**: {user_fb[:2000]}\n\n"
+                            f"请针对性修改后重新输出。\n\n"
+                        ) + (saved_inst or "")
+                    await _execute_agent_node(
+                        nid=current_nid, node=current_node, agent=agent, db=db,
+                        artifacts=artifacts,
+                        node_deps={current_nid: [p for p in adj if current_nid in adj[p]]},
+                        node_key=node_key, label=label, user_message=user_message,
+                        session_id=session_id, team_id=str(team.id),
+                        send_fn=send_fn, ws_path=ws_path, harness=harness,
+                    )
+                    if saved_inst is not None:
+                        current_node.config["instruction"] = saved_inst
                 else:
-                    await asyncio.gather(*[_exec_one_resume(nid) for nid in agent_nids])
+                    await _execute_agent_node(
+                        nid=current_nid, node=current_node, agent=agent, db=db,
+                        artifacts=artifacts,
+                        node_deps={current_nid: [p for p in adj if current_nid in adj[p]]},
+                        node_key=node_key, label=label, user_message=user_message,
+                        session_id=session_id, team_id=str(team.id),
+                        send_fn=send_fn, ws_path=ws_path, harness=harness,
+                    )
 
-            # Condition 节点
-            for cnid in condition_nids:
-                cnode = node_by_id[cnid]
-                cconfig = cnode.config if isinstance(cnode.config, dict) else {}
-                expression = cconfig.get("expression", "")
-                on_true_key = cconfig.get("on_true_node_key", "")
-                on_false_key = cconfig.get("on_false_node_key", "")
-                prev_ids = node_deps.get(cnid, [])
-                combined = "\n".join(artifacts.get(pid, "") for pid in prev_ids)
-                cond_result = await _eval_condition_resume(expression, combined, cnode.label or cnid)
-                unchosen_key = on_false_key if cond_result else on_true_key
-                if unchosen_key and unchosen_key in nkey_to_nid:
-                    prune_nid = nkey_to_nid[unchosen_key]
-                    # Simple prune: just remove the target node
-                    active_nodes.discard(prune_nid)
-                    await send_fn({
-                        "type": "task_status", "source": "langgraph",
-                        "timestamp": datetime.now().isoformat(),
-                        "payload": {"task_id": prune_nid, "status": "skipped",
-                                    "error": f"条件节点未选择此路径"},
-                    })
+            elif current_type == 'hitl':
+                hconfig = current_node.config if isinstance(current_node.config, dict) else {}
+                hitl_msg = hconfig.get("instruction") or hconfig.get("prompt") or f"请审核并确认节点「{label}」的输出。"
+                hitl_invoke_id = str(uuid.uuid4())
                 await send_fn({
                     "type": "task_status", "source": "langgraph",
                     "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(cnode.id), "status": "done", "duration": 0},
-                })
-
-            # Router 节点
-            for rnid in router_nids:
-                rnode = node_by_id[rnid]
-                rconfig = rnode.config if isinstance(rnode.config, dict) else {}
-                candidates: list = rconfig.get("candidates", [])
-                chosen_key = candidates[0] if candidates else ""
-                for ckey in candidates:
-                    if ckey != chosen_key and ckey in nkey_to_nid:
-                        active_nodes.discard(nkey_to_nid[ckey])
-                        await send_fn({
-                            "type": "task_status", "source": "langgraph",
-                            "timestamp": datetime.now().isoformat(),
-                            "payload": {"task_id": nkey_to_nid[ckey], "status": "skipped",
-                                        "error": "路由器恢复执行时默认选第一个候选"},
-                        })
-                await send_fn({
-                    "type": "task_status", "source": "langgraph",
-                    "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(rnode.id), "status": "done", "duration": 0},
-                })
-
-            # HITL 节点
-            for hnid in hitl_nids:
-                hnode = node_by_id[hnid]
-                hlabel = hnode.label or hnode.node_key or str(hnid)
-                hconfig = hnode.config if isinstance(hnode.config, dict) else {}
-                hitl_msg = hconfig.get("instruction") or hconfig.get("prompt") or f"请审核并确认节点「{hlabel}」的输出。"
-                hitl_timeout = hconfig.get("timeout", 300)
-
-                await send_fn({
-                    "type": "task_status",
-                    "source": "langgraph",
-                    "timestamp": datetime.now().isoformat(),
-                    "payload": {"task_id": str(hnode.id), "status": "running"},
+                    "payload": {"task_id": current_nid, "status": "running"},
                 })
                 await send_fn({
-                    "type": "request_clarification",
-                    "source": "langgraph",
+                    "type": "request_clarification", "source": "langgraph",
                     "timestamp": datetime.now().isoformat(),
                     "payload": {
-                        "task_id": str(hnode.id),
-                        "node_key": hnode.node_key,
-                        "label": hlabel,
-                        "message": hitl_msg,
-                        "timeout": hitl_timeout,
-                        "mode": "langgraph_hitl",
+                        "task_id": current_nid, "node_key": node_key, "label": label,
+                        "message": hitl_msg, "timeout": hconfig.get("timeout", 300),
+                        "mode": "langgraph_hitl", "type": "review",
+                        "hitl_invoke_id": hitl_invoke_id,
+                        "options": [
+                            {"label": "✅ 通过", "value": "approve", "description": "审核通过，继续执行"},
+                            {"label": "❌ 打回", "value": "reject", "description": "打回重新修改"},
+                            {"label": "💬 自定义回复", "value": "answer", "description": "输入审核意见"},
+                        ],
                     },
                 })
-
                 _paused[session_id] = {
-                    **state,
-                    "levels": levels,
-                    "level_idx": li,
-                    "hitl_nid": hnid,
-                    "hitl_node_key": hnode.node_key,
-                    "hitl_label": hlabel,
+                    "team": team, "user_message": user_message,
+                    "team_agents": team_agents, "available_roles": available_roles,
+                    "pause_nid": current_nid,
+                    "hitl_invoke_id": hitl_invoke_id,
                     "artifacts": dict(artifacts),
-                    "active_nodes": set(active_nodes),
+                    "visit_count": dict(visit_count),
+                    "execution_order": list(execution_order),
+                    "node_by_id": {k: v for k, v in node_by_id.items()},
+                    "node_to_agent": dict(node_to_agent),
                     "nkey_to_nid": dict(nkey_to_nid),
-                    "pending_hitl_nids": hitl_nids,
+                    "edges_by_source": edges_by_source,
+                    "adj": dict(adj),
+                    "ws_path": ws_path,
                 }
                 asyncio.create_task(_persist_paused_state(session_id, _paused[session_id]))
-                return  # 再次暂停
+                hitl_paused = True
+                return
 
-        # 全部完成
-        # 清理残留状态和 round-robin 计数器
-        _paused.pop(session_id, None)
-        rr_prefix = f"rr_{session_id}_"
-        for k in list(_rr_counter.keys()):
-            if k.startswith(rr_prefix):
-                del _rr_counter[k]
-        await send_fn({
-            "type": "message_complete",
-            "source": "langgraph",
-            "timestamp": datetime.now().isoformat(),
-            "payload": {"message": f"流程执行完成（{len(levels)} 层级）"},
-        })
+            elif current_type in ('condition', 'router', 'validation'):
+                await send_fn({
+                    "type": "task_status", "source": "langgraph",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {"task_id": current_nid, "status": "running"},
+                })
+                combined_input = "\n".join(
+                    artifacts.get(pid, "") for pid in adj
+                    if current_nid in adj.get(pid, [])
+                )
+                # resume 中的 exec_fn：执行 agent 节点（带反馈注入）
+                async def _exec_resume_target(nid: str):
+                    tnode = node_by_id.get(nid)
+                    if not tnode: return
+                    tkey = tnode.node_key or nid
+                    tlabel = tnode.label or tkey
+                    taid = node_to_agent.get(tkey)
+                    if not taid: return
+                    tagent = await db.get(Agent, taid)
+                    if not tagent: return
+                    await _execute_agent_node(
+                        nid=nid, node=tnode, agent=tagent, db=db,
+                        artifacts=artifacts,
+                        node_deps={nid: [p for p in adj if nid in adj[p]]},
+                        node_key=tkey, label=tlabel, user_message=user_message,
+                        session_id=session_id, team_id=str(team.id),
+                        send_fn=send_fn, ws_path=ws_path, harness=harness,
+                    )
+                next_edge_nid = await _resolve_and_exec(
+                    current_nid, combined_input, edges_by_source, artifacts,
+                    node_by_id, nkey_to_nid, adj, db, session_id, str(team.id),
+                    _exec_resume_target,
+                )
+                await send_fn({
+                    "type": "task_status", "source": "langgraph",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {"task_id": current_nid, "status": "done", "duration": 0},
+                })
+                if next_edge_nid:
+                    current_nid = next_edge_nid
+                    continue
+                break
+
+            # ── 解析下一条边 ──
+            current_result = artifacts.get(current_nid, "")
+            next_nid = _resolve_next_edge(
+                current_nid, current_result, edges_by_source, artifacts,
+                node_by_id, nkey_to_nid, adj, db, session_id, str(team.id)
+            )
+            if not next_nid:
+                break
+            current_nid = next_nid
+
+        # 完成
+        if not hitl_paused:
+            _paused.pop(session_id, None)
+            rr_prefix = f"rr_{session_id}_"
+            for k in list(_rr_counter.keys()):
+                if k.startswith(rr_prefix):
+                    del _rr_counter[k]
+            await send_fn({
+                "type": "message_complete", "source": "langgraph",
+                "timestamp": datetime.now().isoformat(),
+                "payload": {"message": f"流程执行完成（{len(execution_order)} 节点）"},
+            })

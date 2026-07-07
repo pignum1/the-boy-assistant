@@ -89,11 +89,32 @@ function toTimelineItem(m: RawHistoryMessage): TimelineItem | null {
   const ts = new Date(m.timestamp).getTime();
   const meta = (m.metadata || {}) as Record<string, unknown>;
 
-  if (m.role === 'user') {
+  if (m.role === 'user' && !meta.hitl_response) {
     const item: UserMessageItem = {
       id: m.id,
       kind: 'user_message',
       content: m.content,
+      timestamp: ts,
+    };
+    return item;
+  }
+
+  // HITL 回答记录：创建已回答的 HITL 卡片（与通知记录共享 hitl_id）
+  if (meta.hitl_response && !meta.hitl_notification) {
+    const hitlId = (meta.hitl_id as string) || `hitl-resp-${m.id}`;
+    const selectedValue = (meta.selected_value as string) || undefined;
+    // hitl_response 可能是布尔 true（旧数据）或字符串（新数据）
+    const answerText = typeof meta.hitl_response === 'string' ? meta.hitl_response : String(meta.hitl_response || '');
+    const item: HitlCardItem = {
+      id: m.id,
+      kind: 'hitl_card',
+      hitlId,
+      cardState: 'answered',
+      hitlKind: 'review',
+      message: answerText,
+      options: [],
+      answer: answerText,
+      selectedValue,
       timestamp: ts,
     };
     return item;
@@ -124,9 +145,16 @@ function toTimelineItem(m: RawHistoryMessage): TimelineItem | null {
       });
 
     // 检查是否有对应的回答
-    const hitlResponse = meta.hitl_response as string | undefined;
-    const isResolved = !!hitlResponse;
+    const hitlResponseRaw = meta.hitl_response;
+    // hitl_response 可能是布尔 true（旧数据）或字符串（新数据）
+    const hitlResponse = typeof hitlResponseRaw === 'string' ? hitlResponseRaw : (hitlResponseRaw ? String(hitlResponseRaw) : undefined);
+    const isResolved = !!hitlResponseRaw;
     const cardState: HitlCardItem['cardState'] = isResolved ? 'answered' : 'pending';
+
+    // 从 metadata 中直接读取用户选择的原始值（后端持久化）
+    const selectedValue = (meta.selected_value as string) || undefined;
+    // message 确保是字符串
+    const hitlMessage = (meta.hitl_message as string) || (typeof m.content === 'string' ? m.content : String(m.content || ''));
 
     const item: HitlCardItem = {
       id: m.id,
@@ -134,9 +162,10 @@ function toTimelineItem(m: RawHistoryMessage): TimelineItem | null {
       hitlId,
       cardState,
       hitlKind,
-      message: (meta.hitl_message as string) || m.content,
+      message: hitlMessage,
       options,
-      answer: hitlResponse,
+      answer: typeof hitlResponse === 'string' ? hitlResponse : undefined,
+      selectedValue,
       timestamp: ts,
     };
     return item;
@@ -300,10 +329,10 @@ export function useSessionHistory(
   dispatch: React.Dispatch<ChatRoomAction>,
   /** 当前已渲染的消息数 — 若 >0 跳过历史加载（WS 实时消息为准） */
   currentMessageCount: number,
+  historyVersion?: number,
 ) {
   useEffect(() => {
     if (!sessionId) return;
-    if (currentMessageCount > 0) return;
 
     let cancelled = false;
 
@@ -411,5 +440,5 @@ export function useSessionHistory(
     load().catch(() => {});
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, currentMessageCount, historyVersion]);
 }

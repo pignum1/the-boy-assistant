@@ -46,17 +46,28 @@ export function useWsEvents({
   const retriesRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastSessionRef = useRef(sessionId);
+  const pendingMessagesRef = useRef<OutboundMessage[]>([]);
+  const connectEpochRef = useRef(0);
 
-  // ── 出站发送（独立 ref 以便 hooks 稳定） ──
+  // ── 出站发送（带队列，WS 断开时缓存消息，重连后发送） ──
+
+  const drainQueue = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const queue = pendingMessagesRef.current;
+    while (queue.length > 0) {
+      const msg = queue.shift()!;
+      try { ws.send(JSON.stringify(msg)); } catch { queue.unshift(msg); break; }
+    }
+  }, []);
 
   const safeSend = useCallback((msg: OutboundMessage) => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(msg));
     } else {
-      // 用 console.warn 而非抛错，避免 UI 崩溃
-      // eslint-disable-next-line no-console
-      console.warn('[useWsEvents] WS not open, dropping message', msg);
+      // WS 未就绪 → 缓存到队列，连接后自动发送
+      pendingMessagesRef.current.push(msg);
     }
   }, []);
 
@@ -105,17 +116,47 @@ export function useWsEvents({
       dispatch({ type: 'CTRL/INIT_SESSION', sessionId });
     }
 
-    // mounted 标志：StrictMode 第二次 mount 时阻止旧 WS 触发 reconnect
+    // epoch 标志：每次 effect 运行递增。旧 WS 的事件处理中检查 epoch，
+    // 不匹配则忽略，避免 StrictMode 双 mount 导致状态异常。
+    const epoch = ++connectEpochRef.current;
     let mounted = true;
 
     function open(): WebSocket {
       const url = getWsUrl(`/ws/sessions/${sessionId}`);
       const ws = new WebSocket(url);
 
+      // ── 轮询历史（重连后检查是否有新消息）──
+      let pollTimer: ReturnType<typeof setInterval> | null = null;
+      const stopPoll = () => {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      };
+      const startPoll = () => {
+        stopPoll();
+        let attempts = 0;
+        pollTimer = setInterval(async () => {
+          if (!mounted || epoch !== connectEpochRef.current) { stopPoll(); return; }
+          attempts++;
+          try {
+            const API = (import.meta as any).env?.VITE_API_URL || '';
+            const res = await fetch(`${API}/api/v1/sessions/${sessionId}/messages?limit=200`);
+            const data = await res.json();
+            const msgs = data.messages || [];
+            if (msgs.length > 0) {
+              dispatch({ type: 'CTRL/HISTORY_REFRESH', messages: msgs });
+              // 有新消息（非 user）→ 停止轮询
+              const hasNew = msgs.some((m: any) => m.role !== 'user');
+              if (hasNew || attempts > 10) stopPoll();
+            }
+          } catch { /* ignore fetch errors */ }
+        }, 3000);
+      };
+
       ws.onopen = () => {
-        if (!mounted) { ws.close(); return; }
+        if (!mounted || epoch !== connectEpochRef.current) { ws.close(); return; }
         dispatch({ type: 'CTRL/WS_CONNECTED', connected: true });
         retriesRef.current = 0;
+        drainQueue();
+        startPoll();
       };
 
       ws.onmessage = (event) => {
@@ -130,20 +171,19 @@ export function useWsEvents({
       };
 
       ws.onclose = () => {
-        if (!mounted) return;
+        if (!mounted || epoch !== connectEpochRef.current) return;
         dispatch({ type: 'CTRL/WS_CONNECTED', connected: false });
         if (retriesRef.current < maxRetries) {
           const delay = Math.min(1000 * 2 ** retriesRef.current, 30000);
           retriesRef.current += 1;
           reconnectTimerRef.current = setTimeout(() => {
-            if (mounted) wsRef.current = open();
+            if (mounted && epoch === connectEpochRef.current) wsRef.current = open();
           }, delay);
         }
       };
 
-      ws.onerror = (err) => {
-        if (!mounted) return;
-        console.error('[useWsEvents] WebSocket error:', err);
+      ws.onerror = () => {
+        if (!mounted || epoch !== connectEpochRef.current) return;
         ws.close();
       };
       return ws;
@@ -154,14 +194,11 @@ export function useWsEvents({
     return () => {
       mounted = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      const ws = wsRef.current;
-      if (ws && ws.readyState !== WebSocket.CONNECTING) {
-        try { ws.close(); } catch { /* noop */ }
-      }
-      // 若 readyState === CONNECTING，不强行 close——否则浏览器会记
-      // "closed before the connection is established" warning。
-      // 等它连上后 onopen 发现 mounted=false 自动关闭，不留警告。
       wsRef.current = null;
+      // 注意：StrictMode 下不主动 close WS。
+      // 浏览器在页面真正卸载时会自动关闭。React double-mount 时
+      // 第一次 effect 的 open() 创建的连接会自然完成，第二次 effect
+      // 的 open() 会创建新连接，旧连接通过 onopen 里 mounted 检查自动关闭。
     };
   }, [sessionId, dispatch, dispatchInbound, maxRetries]);
 
@@ -191,6 +228,7 @@ export function mapInboundToAction(msg: InboundMessage): ChatRoomAction | null {
       return { type: 'WS/REASONING_COMPLETE', payload: msg.payload };
     case 'hitl_request':
     case 'hitl_notification':  // swarm 引擎使用 hitl_notification
+    case 'request_clarification':  // langgraph 引擎使用 request_clarification
       return { type: 'WS/HITL_REQUEST', payload: msg.payload };
     case 'task_output':       // swarm 引擎的任务产出（同 agent_message）
       return { type: 'WS/AGENT_MESSAGE', payload: msg.payload, source: msg.source };

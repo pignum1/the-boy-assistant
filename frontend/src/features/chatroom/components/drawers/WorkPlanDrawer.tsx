@@ -106,12 +106,20 @@ function TaskCard({ task }: { task: WorkTask }) {
   const icon = STATUS_ICON[task.status] ?? '⏸';
   const isRunning = task.status === 'running';
   const isDone = task.status === 'done';
+  const isRejected = task.status === 'rejected' || task.status === 'rollback';
+  const isSkipped = task.status === 'skipped';
+  const isFailed = task.status === 'failed';
   const elapsed = task.startedAt && task.endedAt
     ? `${Math.round((task.endedAt - task.startedAt) / 1000)}s`
     : task.startedAt && task.status === 'running'
       ? `${Math.round((Date.now() - task.startedAt) / 1000)}s`
       : '';
-  const borderColor = isDone ? 'var(--green-400)' : isRunning ? 'var(--cyan-400)' : 'var(--border-strong)';
+  const borderColor = isDone ? 'var(--green-400)'
+    : isRunning ? 'var(--cyan-400)'
+    : isRejected ? '#ef4444'
+    : isFailed ? 'var(--amber-400)'
+    : isSkipped ? 'var(--text-dim)'
+    : 'var(--border-strong)';
 
   return (
     <div style={{
@@ -198,7 +206,8 @@ function EmptyState({ text }: { text: string }) {
 
 const STATUS_ICON: Record<WorkTaskStatus | 'partial', string> = {
   pending: '⏸', running: '⏳', done: '✓', failed: '⚠️',
-  retrying: '🔁', modified: '🔄', new: '🆕', cancelled: '❌', partial: '◐',
+  retrying: '🔁', rejected: '↺', rollback: '↩', skipped: '⏭',
+  modified: '🔄', new: '🆕', cancelled: '❌', partial: '◐',
 };
 
 const PHASE_COLOR: Record<string, string> = {
@@ -208,8 +217,8 @@ const PHASE_COLOR: Record<string, string> = {
 
 function computePhaseStatus(tasks: WorkTask[]): WorkPhase['status'] {
   if (tasks.length === 0) return 'pending';
-  if (tasks.every(t => t.status === 'done' || t.status === 'cancelled')) return 'done';
-  if (tasks.some(t => t.status === 'running')) return 'running';
+  if (tasks.every(t => t.status === 'done' || t.status === 'cancelled' || t.status === 'skipped')) return 'done';
+  if (tasks.some(t => t.status === 'running' || t.status === 'rejected' || t.status === 'rollback')) return 'running';
   if (tasks.some(t => t.status === 'done')) return 'partial';
   return 'pending';
 }

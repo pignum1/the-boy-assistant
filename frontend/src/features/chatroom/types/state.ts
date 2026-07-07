@@ -65,6 +65,9 @@ export type WorkTaskStatus =
   | 'done'         // 已完成
   | 'failed'       // 失败
   | 'retrying'     // 重试中
+  | 'rejected'     // 打回（需重新执行）
+  | 'rollback'     // 因打回而重置
+  | 'skipped'      // 被条件/路由跳过
   | 'modified'     // 介入修改（需重做）
   | 'new'          // 介入新增
   | 'cancelled';   // 介入取消
@@ -178,6 +181,7 @@ export interface PendingHitl {
   kind: HitlKind;
   message: string;
   options: HitlOption[];
+  selectedValue?: string;  // 用户选择的原始 value（approve/reject/answer）
   cardState: HitlCardState;
   /** 用户的回答（answered 后填充） */
   answer?: string;
@@ -360,6 +364,7 @@ export interface HitlCardItem {
   message: string;
   options: HitlOption[];
   answer?: string;
+  selectedValue?: string;  // 用户选择的原始 value（approve/reject/answer）
   deltaPlan?: DeltaPlan;
   timestamp: number;
 }
@@ -402,6 +407,7 @@ export interface ChatRoomState {
   // 维度 B 业务任务
   workPlan: WorkPlan | null;
   workPlanVersion: number;
+  historyVersion: number;  // 递增触发历史重载（轮询用）
   /** 最近一次介入的 diff（用于抽屉顶部摘要条） */
   workPlanDelta: DeltaPlan | null;
 
@@ -467,6 +473,7 @@ export function makeInitialChatRoomState(sessionId: string): ChatRoomState {
     routing: null,
     workPlan: null,
     workPlanVersion: 0,
+    historyVersion: 0,
     workPlanDelta: null,
     thinkingAgents: [],
     executionState: 'idle',

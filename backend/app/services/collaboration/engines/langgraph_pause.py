@@ -53,11 +53,29 @@ async def _persist_paused_state(session_id: str, state: dict) -> None:
             serializable["active_nodes"] = list(v) if isinstance(v, set) else v
         elif k == "adj":
             serializable["adj"] = dict(v)
+        elif k == "edges_by_source":
+            # 序列化 SQLAlchemy WorkflowEdge 对象为 dict
+            serializable["edges_by_source"] = {
+                sid: [
+                    {
+                        "id": str(e.id) if hasattr(e, "id") else str(e.get("id", "")),
+                        "type": e.type if hasattr(e, "type") else e.get("type", "forward"),
+                        "source_id": str(e.source_id) if hasattr(e, "source_id") else str(e.get("source_id", "")),
+                        "target_id": str(e.target_id) if hasattr(e, "target_id") else str(e.get("target_id", "")),
+                    }
+                    for e in edges
+                ]
+                for sid, edges in v.items()
+            }
         elif k in ("node_to_agent",):
             serializable["node_to_agent"] = {
                 nid: str(a.id) if hasattr(a, "id") else str(a)
                 for nid, a in v.items()
             }
+        elif k == "visit_count":
+            serializable["visit_count"] = dict(v) if hasattr(v, "items") else v
+        elif k == "execution_order":
+            serializable["execution_order"] = list(v) if isinstance(v, list) else v
         else:
             serializable[k] = v
 
@@ -73,8 +91,9 @@ async def _persist_paused_state(session_id: str, state: dict) -> None:
                 instance.state = serializable
                 instance.status = "paused"
                 instance.hitl_pending = True
+                pause_nid = state.get("pause_nid") or state.get("hitl_nid")
                 instance.hitl_node_id = (
-                    uuid.UUID(state["hitl_nid"]) if state.get("hitl_nid") else None
+                    uuid.UUID(pause_nid) if pause_nid else None
                 )
                 instance.last_activity_at = datetime.now(timezone.utc)
                 await db.commit()
@@ -83,10 +102,29 @@ async def _persist_paused_state(session_id: str, state: dict) -> None:
                     session_id, instance.id,
                 )
             else:
-                logger.warning(
-                    "No WorkflowInstance found for session %s, HITL state only in memory",
-                    session_id,
-                )
+                # 不存在则创建 WorkflowInstance
+                from app.models.workflow import Workflow
+                wf_result = await db.execute(select(Workflow).limit(1))
+                wf = wf_result.scalar()
+                if wf:
+                    pnid = state.get("pause_nid") or state.get("hitl_nid")
+                    instance = WorkflowInstance(
+                        id=uuid.uuid4(),
+                        workflow_id=wf.id,
+                        session_id=uuid.UUID(session_id),
+                        status="paused",
+                        state=serializable,
+                        hitl_pending=True,
+                        hitl_node_id=uuid.UUID(pnid) if pnid else None,
+                        started_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(timezone.utc),
+                    )
+                    db.add(instance)
+                    await db.commit()
+                    logger.info(
+                        "Created WorkflowInstance + persisted HITL state for session %s",
+                        session_id,
+                    )
     except Exception:
         logger.exception("Failed to persist HITL state for session %s", session_id)
 
@@ -171,25 +209,59 @@ async def _load_paused_state(session_id: str) -> dict | None:
                     if aid in agent_lookup:
                         node_to_agent[nid] = agent_lookup[aid]
 
-            # 恢复状态
+            # 恢复 edges_by_source（dict → SimpleNamespace 支持属性访问）
+            from types import SimpleNamespace
+            edges_by_source: dict[str, list] = {}
+            saved_edges: dict[str, list] = saved.get("edges_by_source", {})
+            for sid, elist in saved_edges.items():
+                edge_objs = []
+                for ed in elist:
+                    if isinstance(ed, dict):
+                        edge_objs.append(SimpleNamespace(
+                            id=ed.get("id", ""),
+                            type=ed.get("type", "forward"),
+                            source_id=ed.get("source_id", ""),
+                            target_id=ed.get("target_id", ""),
+                        ))
+                    else:
+                        edge_objs.append(ed)
+                edges_by_source[sid] = edge_objs
+
+            # 恢复 adj
+            adj = saved.get("adj", {})
+            if isinstance(adj, list):
+                adj = {str(i): v for i, v in enumerate(adj)}
+
+            # 恢复 visit_count
+            visit_count = saved.get("visit_count", {})
+            if isinstance(visit_count, list):
+                visit_count = {}
+
+            # 恢复状态 — 兼容新旧两种格式
             state = {
                 "team": team,
                 "user_message": saved.get("user_message", ""),
                 "team_agents": team_agents,
                 "available_roles": saved.get("available_roles", available_roles),
-                "levels": saved.get("levels", []),
-                "level_idx": saved.get("level_idx", 0),
-                "hitl_nid": saved.get("hitl_nid", ""),
-                "hitl_node_key": saved.get("hitl_node_key", ""),
-                "hitl_label": saved.get("hitl_label", ""),
+                # 新格式字段
+                "pause_nid": saved.get("pause_nid", saved.get("hitl_nid", "")),
                 "artifacts": saved.get("artifacts", {}),
                 "node_by_id": node_by_id,
                 "node_to_agent": node_to_agent,
-                "node_deps": saved.get("node_deps", {}),
-                "adj": saved.get("adj", {}),
-                "ws_path": saved.get("ws_path", ""),
-                "active_nodes": set(saved.get("active_nodes", [])),
                 "nkey_to_nid": saved.get("nkey_to_nid", {}),
+                "edges_by_source": edges_by_source,
+                "adj": adj,
+                "visit_count": visit_count,
+                "execution_order": saved.get("execution_order", []),
+                "ws_path": saved.get("ws_path", ""),
+                # 旧格式兼容（回退用）
+                "hitl_nid": saved.get("hitl_nid", saved.get("pause_nid", "")),
+                "hitl_node_key": saved.get("hitl_node_key", ""),
+                "hitl_label": saved.get("hitl_label", ""),
+                "levels": saved.get("levels", []),
+                "level_idx": saved.get("level_idx", 0),
+                "node_deps": saved.get("node_deps", {}),
+                "active_nodes": set(saved.get("active_nodes", [])),
                 "pending_hitl_nids": saved.get("pending_hitl_nids", []),
             }
 

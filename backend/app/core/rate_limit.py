@@ -17,8 +17,8 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# 默认：每 IP 每分钟 60 次请求
-_DEFAULT_RPM = 120
+# 默认：每 IP 每分钟 300 次请求（页面加载约 5-8 次并发 API 调用）
+_DEFAULT_RPM = 300
 # 窗口大小（秒）
 _WINDOW = 60
 
@@ -89,8 +89,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             request.client.host if request.client
             else request.headers.get("x-forwarded-for", "unknown")
         )
-        # 按 IP + 路径前缀分组（如 /api/v1/agents、/api/v1/sessions）
-        route_prefix = "/" + path.split("/")[1:4][0] if len(path.split("/")) >= 4 else path
+        # 按 IP + 路径前缀分组（精确到 /api/v1/{resource}）
+        parts = path.split("/")
+        route_prefix = "/".join(parts[:4]) if len(parts) >= 4 else path
         limit_key = f"{client_ip}:{route_prefix}"
 
         settings = get_settings()
